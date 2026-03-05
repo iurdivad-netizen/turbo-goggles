@@ -2229,30 +2229,32 @@
       const autoParts = steps + 1;
       const autoPartAmt = initialDeposit / autoParts;
 
-      // Build dynamic recover inputs
+      // Build dynamic recover inputs - only rebuild DOM when step count changes
       const recoverEl = document.getElementById('sim-recover-inputs');
-      let recoverHtml = '<div class="form-row-3">';
-      for (let i = 1; i <= steps; i++) {
-        const label = steps === 1 ? 'Evaluation' : 'Phase ' + i;
-        const autoLabel = steps === 1 ? 'Deposit / 2' : 'Deposit / ' + autoParts;
+      const currentBuiltSteps = parseInt(recoverEl.dataset.steps || '0');
+      if (currentBuiltSteps !== steps) {
+        recoverEl.dataset.steps = steps;
+        let recoverHtml = '<div class="form-row-3">';
+        for (let i = 1; i <= steps; i++) {
+          const label = steps === 1 ? 'Evaluation' : 'Phase ' + i;
+          const autoLabel = steps === 1 ? 'Deposit / 2' : 'Deposit / ' + autoParts;
+          recoverHtml += `
+            <div class="form-group">
+              <label>${label} Recover Amount ($)</label>
+              <input type="number" id="sim-p${i}-recover-input" min="0" step="1" placeholder="Auto: ${autoLabel}" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (${autoLabel})</span>
+            </div>`;
+        }
+        const fundedAutoLabel = steps === 1 ? 'Deposit' : 'Deposit / ' + autoParts;
         recoverHtml += `
           <div class="form-group">
-            <label>${label} Recover Amount ($)</label>
-            <input type="number" id="sim-p${i}-recover-input" min="0" step="1" placeholder="Auto: ${autoLabel}" oninput="updateBankrollSim()">
-            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (${autoLabel})</span>
-          </div>`;
-      }
-      const fundedAutoLabel = steps === 1 ? 'Deposit' : 'Deposit / ' + autoParts;
-      recoverHtml += `
-        <div class="form-group">
-          <label>Funded Recover Amount ($)</label>
-          <input type="number" id="sim-funded-recover-input" min="0" step="1" placeholder="Auto: ${fundedAutoLabel}" oninput="updateBankrollSim()">
-          <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (${fundedAutoLabel})</span>
-        </div>
-      </div>`;
+            <label>Funded Recover Amount ($)</label>
+            <input type="number" id="sim-funded-recover-input" min="0" step="1" placeholder="Auto: ${fundedAutoLabel}" oninput="updateBankrollSim()">
+            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (${fundedAutoLabel})</span>
+          </div>
+        </div>`;
 
-      // Additional deposit inputs for transitions between phases
-      if (steps >= 2 || steps === 1) {
+        // Additional deposit inputs for transitions between phases
         recoverHtml += '<div class="form-row-3">';
         for (let i = 2; i <= steps; i++) {
           recoverHtml += `
@@ -2262,7 +2264,6 @@
               <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto</span>
             </div>`;
         }
-        const fundedDepAutoLabel = steps === 1 ? 'Deposit + Eval Recover' : 'Auto';
         recoverHtml += `
           <div class="form-group">
             <label>Funded Additional Deposit ($)</label>
@@ -2270,18 +2271,18 @@
             <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto</span>
           </div>
         </div>`;
-      }
-      recoverEl.innerHTML = recoverHtml;
+        recoverEl.innerHTML = recoverHtml;
 
-      // Restore saved values
-      try {
-        const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
-        const setVal = (id, key) => { const el = document.getElementById(id); if (el && simData[key]) el.value = simData[key]; };
-        for (let i = 1; i <= 3; i++) setVal('sim-p' + i + '-recover-input', 'p' + i + 'RecoverCustom');
-        setVal('sim-funded-recover-input', 'fundedRecoverCustom');
-        for (let i = 2; i <= 3; i++) setVal('sim-p' + i + '-additional-deposit-input', 'p' + i + 'AdditionalDepositCustom');
-        setVal('sim-additional-deposit-input', 'additionalDepositCustom');
-      } catch(e) {}
+        // Restore saved values into newly created inputs
+        try {
+          const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
+          const setVal = (id, key) => { const el = document.getElementById(id); if (el && simData[key]) el.value = simData[key]; };
+          for (let i = 1; i <= 3; i++) setVal('sim-p' + i + '-recover-input', 'p' + i + 'RecoverCustom');
+          setVal('sim-funded-recover-input', 'fundedRecoverCustom');
+          for (let i = 2; i <= 3; i++) setVal('sim-p' + i + '-additional-deposit-input', 'p' + i + 'AdditionalDepositCustom');
+          setVal('sim-additional-deposit-input', 'additionalDepositCustom');
+        } catch(e) {}
+      }
 
       // Read custom values
       const getInputVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
