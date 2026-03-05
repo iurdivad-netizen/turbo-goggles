@@ -926,53 +926,60 @@
         BREACH WARNING: You are approaching or have exceeded a challenge limit!
       </div>
 
-      <!-- Bankroll Simulation -->
+      <!-- Bankroll Simulation - 1 Phase Over Hedging Model -->
       <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-        <div class="card-title"><span class="dot dot-danger"></span> Fee Recovery Hedge Simulation</div>
+        <div class="card-title"><span class="dot dot-danger"></span> 1 Phase Over Hedging Simulation</div>
         <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-          The hedge only needs to recover the <strong>challenge fee</strong> you paid to enter. If you fail the challenge, the hedge profits cover the fee. If you pass, the hedge loss is offset by your funded account payout. This calculates the personal account bankroll needed to run that hedge.
+          Hedge only recovers the <strong>challenge fee</strong>. Prop = Master, Real = Slave (mirrored).
+          Phase 1 recover = Initial Deposit / 2. Funded recover = Initial Deposit.
         </p>
         <div class="form-row-3">
           <div class="form-group">
-            <label>Leverage (e.g. 100 = 1:100)</label>
-            <input type="number" id="sim-leverage" value="100" min="1" step="1" oninput="updateBankrollSim()">
+            <label>Real Account Initial Deposit ($)</label>
+            <input type="number" id="sim-initial-deposit" value="278" min="0" step="1" oninput="updateBankrollSim()">
           </div>
           <div class="form-group">
-            <label>Avg Concurrent Open Trades</label>
-            <input type="number" id="sim-concurrent" value="2" min="1" step="1" oninput="updateBankrollSim()">
+            <label>Funded Account Goal ($)</label>
+            <input type="number" id="sim-funded-goal" value="700" min="0" step="1" oninput="updateBankrollSim()">
           </div>
           <div class="form-group">
-            <label>Safety Buffer (%)</label>
-            <input type="number" id="sim-buffer" value="30" min="0" step="5" oninput="updateBankrollSim()">
+            <label>Refund Challenge Cost on 1st Payout?</label>
+            <select id="sim-refund" onchange="updateBankrollSim()">
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
           </div>
         </div>
+
         <div class="challenge-stats" id="bankroll-sim-grid">
           <div class="challenge-stat-box">
-            <div class="csl">Challenge Fee</div>
-            <div class="csv" id="sim-fee">--</div>
+            <div class="csl">Challenge Cost</div>
+            <div class="csv" id="sim-challenge-cost">--</div>
           </div>
           <div class="challenge-stat-box">
-            <div class="csl">Hedge Profit Needed</div>
-            <div class="csv" id="sim-profit-needed">--</div>
+            <div class="csl">Phase 1 Recover</div>
+            <div class="csv" id="sim-p1-recover">--</div>
           </div>
           <div class="challenge-stat-box">
-            <div class="csl">Max Hedge Loss (if pass)</div>
-            <div class="csv" id="sim-max-loss">--</div>
+            <div class="csl">Funded Recover</div>
+            <div class="csv" id="sim-funded-recover">--</div>
           </div>
           <div class="challenge-stat-box">
-            <div class="csl">Margin Required</div>
-            <div class="csv" id="sim-margin">--</div>
+            <div class="csl">Funded Additional Deposit</div>
+            <div class="csv" id="sim-additional-deposit">--</div>
           </div>
           <div class="challenge-stat-box">
-            <div class="csl">Min Bankroll + Buffer</div>
-            <div class="csv" id="sim-total">--</div>
+            <div class="csl">Total Funds Needed</div>
+            <div class="csv" id="sim-total-funds">--</div>
           </div>
           <div class="challenge-stat-box">
-            <div class="csl">Net Outcome (if pass)</div>
+            <div class="csl">Net Outcome (all pass)</div>
             <div class="csv" id="sim-net-pass">--</div>
           </div>
         </div>
-        <div id="sim-phase-summary" style="margin-top: 0.75rem;"></div>
+
+        <div id="sim-scenario-table" style="margin-top: 0.75rem;"></div>
+        <div id="sim-net-breakdown" style="margin-top: 0.75rem;"></div>
       </div>
     </div>
 
@@ -1612,6 +1619,14 @@
       document.getElementById('challenge-max-lots').value = p.maxLots || '';
       document.getElementById('challenge-profit-split').value = p.profitSplit || '';
       document.getElementById('challenge-start-date').value = p.startDate || '';
+
+      // Load sim inputs
+      try {
+        const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
+        if (simData.initialDeposit) document.getElementById('sim-initial-deposit').value = simData.initialDeposit;
+        if (simData.fundedGoal) document.getElementById('sim-funded-goal').value = simData.fundedGoal;
+        if (simData.refund) document.getElementById('sim-refund').value = simData.refund ? 'yes' : 'no';
+      } catch(e) {}
     }
 
     function saveChallenge() {
@@ -1776,6 +1791,11 @@
         challenge: challenge,
         settings: {
           notes: document.getElementById('setting-notes').value || ''
+        },
+        simInputs: {
+          initialDeposit: parseFloat(document.getElementById('sim-initial-deposit').value) || 0,
+          fundedGoal: parseFloat(document.getElementById('sim-funded-goal').value) || 0,
+          refund: document.getElementById('sim-refund').value === 'yes'
         }
       };
       const json = JSON.stringify(data, null, 2);
@@ -1814,6 +1834,12 @@
           if (data.settings && data.settings.notes) {
             document.getElementById('setting-notes').value = data.settings.notes;
           }
+          if (data.simInputs) {
+            if (data.simInputs.initialDeposit) document.getElementById('sim-initial-deposit').value = data.simInputs.initialDeposit;
+            if (data.simInputs.fundedGoal) document.getElementById('sim-funded-goal').value = data.simInputs.fundedGoal;
+            document.getElementById('sim-refund').value = data.simInputs.refund ? 'yes' : 'no';
+            localStorage.setItem('hedgeSimInputs', JSON.stringify(data.simInputs));
+          }
           renderTrades();
           updateStats();
           updateChallenge();
@@ -1838,136 +1864,161 @@
       }
     }
 
-    // ── Bankroll simulation (fee recovery hedge) ──
+    // ── Bankroll simulation (1 Phase Over Hedging model) ──
     function updateBankrollSim() {
-      const leverage = parseFloat(document.getElementById('sim-leverage').value) || 100;
-      const concurrent = parseInt(document.getElementById('sim-concurrent').value) || 2;
-      const bufferPct = parseFloat(document.getElementById('sim-buffer').value) || 0;
+      const initialDeposit = parseFloat(document.getElementById('sim-initial-deposit').value) || 0;
+      const fundedGoal = parseFloat(document.getElementById('sim-funded-goal').value) || 0;
+      const refund = document.getElementById('sim-refund').value === 'yes';
 
-      const phases = ['phase1', 'phase2', 'funded'];
-      const phaseLabels = { phase1: 'Phase 1', phase2: 'Phase 2', funded: 'Funded' };
-      const phaseResults = [];
+      // Save sim inputs to localStorage
+      localStorage.setItem('hedgeSimInputs', JSON.stringify({ initialDeposit, fundedGoal, refund }));
 
-      // Total fee across all phases (cumulative cost if you fail and retry)
-      let cumulativeFee = 0;
+      // Get challenge data
+      const p1 = challenge.phase1 || {};
+      const pFunded = challenge.funded || {};
+      const challengeCost = (p1.fee || 0);
+      const challengeSize = p1.balance || 0;
+      const profitTargetPct = p1.profitTarget || 0;
+      const profitSplit = (pFunded.profitSplit || 80) / 100;
 
-      phases.forEach(phase => {
-        const p = challenge[phase] || {};
-        const balance = p.balance || 0;
-        const fee = p.fee || 0;
-        const profitTargetPct = p.profitTarget || 0;
-        const maxDDPct = p.maxDD || 0;
-        const profitSplit = p.profitSplit || 0;
-        const maxLots = p.maxLots || 0;
+      // Core calculations from spreadsheet model
+      const phase1Recover = initialDeposit / 2;
+      const fundedRecover = initialDeposit;
+      const additionalDeposit = initialDeposit + phase1Recover;
+      const totalFundsNeeded = initialDeposit + challengeCost + additionalDeposit;
 
-        cumulativeFee += fee;
+      // Funded payout
+      const fundedPayout = fundedGoal * profitSplit;
 
-        if (fee <= 0 && balance <= 0) {
-          phaseResults.push({ phase, label: phaseLabels[phase], fee: 0, balance: 0, profitNeeded: 0, maxHedgeLoss: 0, margin: 0, total: 0, netIfPass: 0, cumulativeFee });
-          return;
-        }
+      // Update stat boxes
+      document.getElementById('sim-challenge-cost').textContent = challengeCost > 0 ? '$' + challengeCost.toFixed(2) : '--';
+      document.getElementById('sim-p1-recover').textContent = initialDeposit > 0 ? '$' + phase1Recover.toFixed(2) : '--';
+      document.getElementById('sim-funded-recover').textContent = initialDeposit > 0 ? '$' + fundedRecover.toFixed(2) : '--';
+      document.getElementById('sim-additional-deposit').textContent = additionalDeposit > 0 ? '$' + additionalDeposit.toFixed(2) : '--';
+      document.getElementById('sim-total-funds').textContent = totalFundsNeeded > 0 ? '$' + totalFundsNeeded.toFixed(2) : '--';
 
-        // The hedge needs to PROFIT enough to cover the fee if the challenge fails.
-        // Hedge profit = prop loss (mirrored). If prop hits max DD, hedge gains that $.
-        // So we need: hedge profit on fail >= fee
-        // Hedge profit on fail = prop DD amount = balance * maxDD%
-        const propMaxDD$ = balance * maxDDPct / 100;
-        // profitNeeded = fee (what you need to recover)
-        const profitNeeded = fee;
-
-        // Worst case for hedge: prop PASSES the challenge (hits profit target).
-        // Hedge loses the mirror of that profit.
-        const propProfitTarget$ = balance * profitTargetPct / 100;
-        const maxHedgeLoss = propProfitTarget$;
-
-        // Margin for concurrent hedge positions
-        const lotsEstimate = maxLots > 0 ? maxLots : 0.1;
-        const notionalPerTrade = lotsEstimate * 100000;
-        const marginPerTrade = notionalPerTrade / leverage;
-        const totalMargin = marginPerTrade * concurrent;
-
-        // Bankroll = max hedge loss + margin needed, plus buffer
-        // (need to survive the worst case: prop passes and hedge loses)
-        const subtotal = maxHedgeLoss + totalMargin;
-        const total = subtotal * (1 + bufferPct / 100);
-
-        // Net outcome if challenge passes:
-        // You get funded account payout, but hedge loses propProfitTarget$
-        // Funded payout after split = propProfitTarget$ * (profitSplit / 100)
-        // But on Phase 1/2 there's no payout yet, you just advance.
-        // For Phase 1 & 2: net if pass = -maxHedgeLoss (hedge loss) + $0 payout (just advance)
-        // For Funded: net if pass = funded profit * split% - hedge loss
-        let netIfPass;
-        if (phase === 'funded' && profitSplit > 0) {
-          netIfPass = (propProfitTarget$ * profitSplit / 100) - maxHedgeLoss;
-        } else {
-          // Phases 1&2: you don't get paid, but you advance (value = avoided re-paying fees)
-          netIfPass = -maxHedgeLoss;
-        }
-
-        phaseResults.push({
-          phase, label: phaseLabels[phase], fee, balance,
-          profitNeeded, maxHedgeLoss, margin: totalMargin,
-          total, netIfPass, cumulativeFee,
-          propMaxDD$, coverage: propMaxDD$ > 0 ? Math.min(100, (propMaxDD$ / fee) * 100) : 0
-        });
-      });
-
-      // Update current phase stat boxes
-      const current = phaseResults.find(r => r.phase === currentPhase) || phaseResults[0];
-      document.getElementById('sim-fee').textContent = current.fee > 0 ? '$' + current.fee.toFixed(2) : '--';
-      document.getElementById('sim-profit-needed').textContent = current.profitNeeded > 0 ? '$' + current.profitNeeded.toFixed(2) : '--';
-      document.getElementById('sim-max-loss').textContent = current.maxHedgeLoss > 0 ? '$' + current.maxHedgeLoss.toFixed(2) : '--';
-      document.getElementById('sim-margin').textContent = current.margin > 0 ? '$' + current.margin.toFixed(2) : '--';
-      document.getElementById('sim-total').textContent = current.total > 0 ? '$' + current.total.toFixed(2) : '--';
+      // Net if ALL pass: Payout - phase1 hedge loss - funded hedge loss - challenge cost (+ refund if applicable)
+      const netAllPass = fundedPayout - phase1Recover - fundedRecover - challengeCost + (refund ? challengeCost : 0);
       const netEl = document.getElementById('sim-net-pass');
-      if (current.fee > 0 || current.balance > 0) {
-        netEl.textContent = (current.netIfPass >= 0 ? '+' : '-') + '$' + Math.abs(current.netIfPass).toFixed(2);
-        netEl.className = 'csv ' + (current.netIfPass >= 0 ? 'buy-text' : 'sell-text');
+      if (initialDeposit > 0 && fundedGoal > 0) {
+        netEl.textContent = (netAllPass >= 0 ? '+' : '-') + '$' + Math.abs(netAllPass).toFixed(2);
+        netEl.className = 'csv ' + (netAllPass >= 0 ? 'buy-text' : 'sell-text');
       } else {
         netEl.textContent = '--';
         netEl.className = 'csv';
       }
 
-      // Phase comparison table
-      const hasData = phaseResults.some(r => r.fee > 0 || r.balance > 0);
-      if (!hasData) {
-        document.getElementById('sim-phase-summary').innerHTML = '';
+      if (initialDeposit <= 0) {
+        document.getElementById('sim-scenario-table').innerHTML = '';
+        document.getElementById('sim-net-breakdown').innerHTML = '';
         return;
       }
 
-      const totalFees = phaseResults.reduce((sum, r) => sum + r.fee, 0);
-      const peakBankroll = phaseResults.reduce((max, r) => Math.max(max, r.total), 0);
+      // Build FAIL/PASS scenario table
+      let realBalance = initialDeposit;
+      const scenarios = [];
 
+      // Phase 1 FAIL: Prop fails, hedge wins phase1Recover
+      const p1FailBalance = realBalance + phase1Recover;
+      scenarios.push({
+        phase: 'Phase 1', outcome: 'FAIL', outcomeClass: 'sell-text',
+        fee: -challengeCost,
+        realPL: '+$' + phase1Recover.toFixed(2), realPLClass: 'buy-text',
+        newBalance: p1FailBalance,
+        action: `Withdraw $${phase1Recover.toFixed(0)}, profit $${(phase1Recover - challengeCost).toFixed(0)} & try again`
+      });
+
+      // Phase 1 PASS: Prop passes, hedge loses phase1Recover
+      const p1PassBalance = realBalance - phase1Recover;
+      scenarios.push({
+        phase: 'Phase 1', outcome: 'PASS', outcomeClass: 'buy-text',
+        fee: 0,
+        realPL: '-$' + phase1Recover.toFixed(2), realPLClass: 'sell-text',
+        newBalance: p1PassBalance,
+        action: `Cost you $${(initialDeposit - p1PassBalance).toFixed(0)} to get funded $${challengeSize.toLocaleString()}`
+      });
+
+      // After Phase 1 PASS, deposit additional funds for funded phase
+      const fundedStartBalance = p1PassBalance + additionalDeposit;
+
+      // Funded FAIL: Prop fails, hedge wins fundedRecover
+      const fundedFailBalance = fundedStartBalance + fundedRecover;
+      const fundedFailNet = fundedRecover - challengeCost;
+      scenarios.push({
+        phase: 'Funded', outcome: 'FAIL', outcomeClass: 'sell-text',
+        fee: -challengeCost,
+        realPL: '+$' + fundedRecover.toFixed(2), realPLClass: 'buy-text',
+        newBalance: fundedFailBalance,
+        action: `Gain net $${fundedFailNet.toFixed(0)}. Rinse and repeat`
+      });
+
+      // Funded PASS: Prop passes, hedge loses fundedRecover, but you get payout
+      const fundedPassBalance = fundedStartBalance - fundedRecover;
+      scenarios.push({
+        phase: 'Funded', outcome: 'PASS', outcomeClass: 'buy-text',
+        fee: refund ? 0 : -challengeCost,
+        realPL: '-$' + fundedRecover.toFixed(2), realPLClass: 'sell-text',
+        newBalance: fundedPassBalance,
+        action: `Gain net $${netAllPass.toFixed(0)}. Keep funded account!`
+      });
+
+      // Render scenario table
       let html = `<table class="sim-phase-table">
         <thead><tr>
-          <th>Phase</th><th>Fee</th><th>Hedge Profit (if fail)</th><th>Hedge Loss (if pass)</th><th>Bankroll Needed</th><th>Net (if pass)</th>
+          <th>Phase</th><th>Outcome</th><th>Fee</th><th>Real Account P/L</th><th>Real Balance</th><th>Action</th>
         </tr></thead><tbody>`;
 
-      phaseResults.forEach(r => {
-        if (r.fee <= 0 && r.balance <= 0) return;
-        const activeClass = r.phase === currentPhase ? ' class="phase-active"' : '';
-        const netClass = r.netIfPass >= 0 ? 'buy-text' : 'sell-text';
-        const netSign = r.netIfPass >= 0 ? '+' : '-';
+      scenarios.forEach((s, i) => {
+        // Add separator row before funded scenarios
+        if (i === 2) {
+          html += `<tr><td colspan="6" style="padding:0.3rem 0.6rem; font-size:0.72rem; color:var(--text-secondary); border-bottom:1px solid var(--border);">
+            After Phase 1 pass: deposit additional $${additionalDeposit.toFixed(0)} &rarr; Real balance: $${fundedStartBalance.toFixed(2)}
+          </td></tr>`;
+        }
         html += `<tr>
-          <td${activeClass}>${r.label}${r.phase === currentPhase ? ' *' : ''}</td>
-          <td>$${r.fee.toFixed(0)}</td>
-          <td class="buy-text">${r.propMaxDD$ > 0 ? '+$' + r.propMaxDD$.toFixed(2) : '--'}</td>
-          <td class="sell-text">${r.maxHedgeLoss > 0 ? '-$' + r.maxHedgeLoss.toFixed(2) : '--'}</td>
-          <td><strong>$${r.total.toFixed(2)}</strong></td>
-          <td class="${netClass}">${netSign}$${Math.abs(r.netIfPass).toFixed(2)}</td>
+          <td><strong>${s.phase}</strong></td>
+          <td class="${s.outcomeClass}"><strong>${s.outcome}</strong></td>
+          <td>${s.fee < 0 ? '-$' + Math.abs(s.fee).toFixed(0) : '$0'}</td>
+          <td class="${s.realPLClass}">${s.realPL}</td>
+          <td><strong>$${s.newBalance.toFixed(2)}</strong></td>
+          <td style="font-size:0.75rem; color:var(--text-secondary);">${s.action}</td>
         </tr>`;
       });
 
-      html += `<tr>
-        <td style="color:var(--text-secondary);">Totals</td>
-        <td><strong>$${totalFees.toFixed(0)}</strong></td>
-        <td colspan="2" style="text-align:right; color:var(--text-secondary);">Peak Bankroll Required</td>
-        <td class="buy-text"><strong>$${peakBankroll.toFixed(2)}</strong></td>
-        <td></td>
-      </tr></tbody></table>`;
+      html += `</tbody></table>`;
+      document.getElementById('sim-scenario-table').innerHTML = html;
 
-      document.getElementById('sim-phase-summary').innerHTML = html;
+      // Net breakdown (if all pass)
+      let breakdown = `<div style="background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">
+        <div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Net Breakdown (if all phases pass)</div>
+        <div style="display:grid; grid-template-columns:1fr auto; gap:0.25rem 1rem;">
+          <span>Funded Payout (${(profitSplit*100).toFixed(0)}% of $${fundedGoal.toFixed(0)})</span>
+          <span class="buy-text" style="text-align:right;">+$${fundedPayout.toFixed(2)}</span>
+          <span>Phase 1 hedge loss</span>
+          <span class="sell-text" style="text-align:right;">-$${phase1Recover.toFixed(2)}</span>
+          <span>Funded hedge loss</span>
+          <span class="sell-text" style="text-align:right;">-$${fundedRecover.toFixed(2)}</span>
+          <span>Challenge cost</span>
+          <span class="sell-text" style="text-align:right;">-$${challengeCost.toFixed(2)}</span>`;
+
+      if (refund) {
+        breakdown += `
+          <span>Challenge cost refund</span>
+          <span class="buy-text" style="text-align:right;">+$${challengeCost.toFixed(2)}</span>`;
+      }
+
+      const netClass = netAllPass >= 0 ? 'buy-text' : 'sell-text';
+      const netSign = netAllPass >= 0 ? '+' : '-';
+      breakdown += `
+          <span style="border-top:1px solid var(--border); padding-top:0.4rem; font-weight:700;">NET</span>
+          <span class="${netClass}" style="border-top:1px solid var(--border); padding-top:0.4rem; font-weight:700; text-align:right;">${netSign}$${Math.abs(netAllPass).toFixed(2)}</span>
+        </div>
+        <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-secondary);">
+          Total funds needed: $${totalFundsNeeded.toFixed(2)} (Initial $${initialDeposit.toFixed(0)} + Fee $${challengeCost.toFixed(0)} + Additional $${additionalDeposit.toFixed(0)})
+        </div>
+      </div>`;
+
+      document.getElementById('sim-net-breakdown').innerHTML = breakdown;
     }
 
     // ── Initialize ──
