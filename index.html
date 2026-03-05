@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forex Hedge Strategy Manager</title>
+  <style>
+    :root {
+      --bg-primary: #0f1923;
+      --bg-secondary: #1a2733;
+      --bg-card: #1e2d3d;
+      --accent: #00c896;
+      --accent-hover: #00e6ac;
+      --danger: #e74c5f;
+      --danger-hover: #ff5c72;
+      --text-primary: #e8edf2;
+      --text-secondary: #8899aa;
+      --border: #2a3a4a;
+      --buy-color: #00c896;
+      --sell-color: #e74c5f;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 1rem;
+      color: var(--bg-primary);
+    }
+
+    .logo h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .header-stats {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .header-stat {
+      text-align: center;
+    }
+
+    .header-stat-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      letter-spacing: 0.05em;
+    }
+
+    .header-stat-value {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .header-stat-value.positive { color: var(--buy-color); }
+    .header-stat-value.negative { color: var(--sell-color); }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-title .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    /* Signal Input Form */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.35rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    select option {
+      background: var(--bg-primary);
+    }
+
+    .direction-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .direction-toggle button {
+      padding: 0.6rem;
+      border: none;
+      background: var(--bg-primary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .direction-toggle button.active-buy {
+      background: var(--buy-color);
+      color: var(--bg-primary);
+    }
+
+    .direction-toggle button.active-sell {
+      background: var(--sell-color);
+      color: #fff;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 0.7rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg-primary);
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn-danger:hover {
+      background: var(--danger-hover);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--text-primary);
+      color: var(--text-primary);
+    }
+
+    /* Hedge Preview */
+    .hedge-preview {
+      background: var(--bg-primary);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    .hedge-preview-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.05em;
+    }
+
+    .hedge-arrows {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+    }
+
+    .hedge-arrows .arrow {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+    }
+
+    .hedge-badge {
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .badge-buy {
+      background: rgba(0, 200, 150, 0.15);
+      color: var(--buy-color);
+    }
+
+    .badge-sell {
+      background: rgba(231, 76, 95, 0.15);
+      color: var(--sell-color);
+    }
+
+    /* Trade Log */
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .trade-table-wrapper {
+      overflow-x: auto;
+    }
+
+    .trade-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .trade-table th {
+      text-align: left;
+      padding: 0.6rem 0.75rem;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .trade-table td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .trade-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .trade-table .direction-cell {
+      font-weight: 600;
+    }
+
+    .trade-table .buy-text { color: var(--buy-color); }
+    .trade-table .sell-text { color: var(--sell-color); }
+
+    .trade-actions {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .btn-sm {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.75rem;
+      border-radius: 6px;
+      width: auto;
+    }
+
+    .status-badge {
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .status-open {
+      background: rgba(0, 200, 150, 0.15);
+      color: var(--buy-color);
+    }
+
+    .status-closed {
+      background: rgba(136, 153, 170, 0.15);
+      color: var(--text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--text-secondary);
+    }
+
+    .empty-state p {
+      font-size: 0.9rem;
+    }
+
+    .empty-state .empty-hint {
+      font-size: 0.8rem;
+      margin-top: 0.4rem;
+    }
+
+    /* Settings card */
+    .settings-grid {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+    }
+
+    .setting-row label {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--border);
+      border-radius: 12px;
+      transition: 0.2s;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: var(--text-primary);
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--accent);
+    }
+
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+    }
+
+    /* Notification toast */
+    .toast-container {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .toast {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+      max-width: 320px;
+      border-left: 3px solid var(--accent);
+    }
+
+    .toast.toast-warn {
+      border-left-color: #f0a030;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      max-width: 400px;
+      width: 100%;
+    }
+
+    .modal h3 {
+      margin-bottom: 0.75rem;
+      font-size: 1rem;
+    }
+
+    .modal p {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .modal-actions .btn {
+      flex: 1;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      main {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+      }
+
+      header {
+        justify-content: center;
+        text-align: center;
+      }
+
+      .header-stats {
+        justify-content: center;
+      }
+
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <div class="logo-icon">FH</div>
+      <h1>Forex Hedge Strategy</h1>
+    </div>
+    <div class="header-stats">
+      <div class="header-stat">
+        <div class="header-stat-label">Open Trades</div>
+        <div class="header-stat-value" id="stat-open">0</div>
+      </div>
+      <div class="header-stat">
+        <div class="header-stat-label">Hedged P/L</div>
+        <div class="header-stat-value" id="stat-pnl">$0.00</div>
+      </div>
+      <div class="header-stat">
+        <div class="header-stat-label">Win Rate</div>
+        <div class="header-stat-value" id="stat-winrate">--</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Signal Input Card -->
+    <div class="card">
+      <div class="card-title"><span class="dot"></span> New Prop Firm Signal</div>
+      <div class="form-group">
+        <label>Currency Pair</label>
+        <select id="input-pair">
+          <option value="EUR/USD">EUR/USD</option>
+          <option value="GBP/USD">GBP/USD</option>
+          <option value="USD/JPY">USD/JPY</option>
+          <option value="USD/CHF">USD/CHF</option>
+          <option value="AUD/USD">AUD/USD</option>
+          <option value="NZD/USD">NZD/USD</option>
+          <option value="USD/CAD">USD/CAD</option>
+          <option value="EUR/GBP">EUR/GBP</option>
+          <option value="EUR/JPY">EUR/JPY</option>
+          <option value="GBP/JPY">GBP/JPY</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Prop Firm Direction</label>
+        <div class="direction-toggle">
+          <button type="button" id="btn-buy" class="active-buy" onclick="setDirection('BUY')">BUY</button>
+          <button type="button" id="btn-sell" onclick="setDirection('SELL')">SELL</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Lot Size</label>
+          <input type="number" id="input-lots" value="0.10" min="0.01" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Entry Price</label>
+          <input type="number" id="input-entry" step="0.00001" placeholder="e.g. 1.08450">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Stop Loss</label>
+          <input type="number" id="input-sl" step="0.00001" placeholder="Optional">
+        </div>
+        <div class="form-group">
+          <label>Take Profit</label>
+          <input type="number" id="input-tp" step="0.00001" placeholder="Optional">
+        </div>
+      </div>
+
+      <div class="hedge-preview" id="hedge-preview">
+        <div class="hedge-preview-title">Hedge Preview</div>
+        <div class="hedge-arrows">
+          <span>Prop: <span class="hedge-badge badge-buy" id="preview-prop">BUY</span></span>
+          <span class="arrow">&rarr;</span>
+          <span>Personal: <span class="hedge-badge badge-sell" id="preview-personal">SELL</span></span>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="addSignal()">Add Signal &amp; Create Hedge</button>
+    </div>
+
+    <!-- Settings Card -->
+    <div class="card">
+      <div class="card-title"><span class="dot"></span> Hedge Settings</div>
+      <div class="settings-grid">
+        <div class="setting-row">
+          <label>Auto-hedge (mirror opposite)</label>
+          <div class="toggle-switch">
+            <input type="checkbox" id="setting-auto-hedge" checked>
+            <span class="toggle-slider" onclick="this.previousElementSibling.click()"></span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label>Mirror stop loss</label>
+          <div class="toggle-switch">
+            <input type="checkbox" id="setting-mirror-sl" checked>
+            <span class="toggle-slider" onclick="this.previousElementSibling.click()"></span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label>Mirror take profit</label>
+          <div class="toggle-switch">
+            <input type="checkbox" id="setting-mirror-tp" checked>
+            <span class="toggle-slider" onclick="this.previousElementSibling.click()"></span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Personal Account Lot Multiplier</label>
+          <input type="number" id="setting-multiplier" value="1.0" min="0.1" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Notes / Strategy Memo</label>
+          <input type="text" id="setting-notes" placeholder="e.g. Only hedge during London session">
+        </div>
+      </div>
+      <div style="margin-top: 1rem; display: flex; gap: 0.75rem;">
+        <button class="btn btn-outline" onclick="exportTrades()">Export CSV</button>
+        <button class="btn btn-outline" onclick="clearAllTrades()">Clear All</button>
+      </div>
+    </div>
+
+    <!-- Trade Log -->
+    <div class="card full-width">
+      <div class="card-title"><span class="dot"></span> Trade Log</div>
+      <div class="trade-table-wrapper">
+        <table class="trade-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Pair</th>
+              <th>Prop Dir.</th>
+              <th>Hedge Dir.</th>
+              <th>Lots</th>
+              <th>Entry</th>
+              <th>SL</th>
+              <th>TP</th>
+              <th>Close Price</th>
+              <th>P/L</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="trade-log-body">
+          </tbody>
+        </table>
+        <div class="empty-state" id="empty-state">
+          <p>No trades yet</p>
+          <p class="empty-hint">Add a prop firm signal to get started</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Close Trade Modal -->
+  <div class="modal-overlay" id="close-modal">
+    <div class="modal">
+      <h3>Close Trade</h3>
+      <p>Enter the closing price to calculate P/L for this hedged position.</p>
+      <div class="form-group">
+        <label>Close Price</label>
+        <input type="number" id="close-price-input" step="0.00001" placeholder="e.g. 1.08550">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmClose()">Close Trade</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script>
+    let trades = JSON.parse(localStorage.getItem('hedgeTrades') || '[]');
+    let currentDirection = 'BUY';
+    let closingTradeId = null;
+
+    function setDirection(dir) {
+      currentDirection = dir;
+      const btnBuy = document.getElementById('btn-buy');
+      const btnSell = document.getElementById('btn-sell');
+      const previewProp = document.getElementById('preview-prop');
+      const previewPersonal = document.getElementById('preview-personal');
+
+      btnBuy.className = dir === 'BUY' ? 'active-buy' : '';
+      btnSell.className = dir === 'SELL' ? 'active-sell' : '';
+
+      const hedgeDir = dir === 'BUY' ? 'SELL' : 'BUY';
+
+      previewProp.textContent = dir;
+      previewProp.className = 'hedge-badge ' + (dir === 'BUY' ? 'badge-buy' : 'badge-sell');
+      previewPersonal.textContent = hedgeDir;
+      previewPersonal.className = 'hedge-badge ' + (hedgeDir === 'BUY' ? 'badge-buy' : 'badge-sell');
+    }
+
+    function addSignal() {
+      const pair = document.getElementById('input-pair').value;
+      const lots = parseFloat(document.getElementById('input-lots').value);
+      const entry = document.getElementById('input-entry').value;
+      const sl = document.getElementById('input-sl').value;
+      const tp = document.getElementById('input-tp').value;
+      const multiplier = parseFloat(document.getElementById('setting-multiplier').value) || 1.0;
+      const autoHedge = document.getElementById('setting-auto-hedge').checked;
+      const mirrorSl = document.getElementById('setting-mirror-sl').checked;
+      const mirrorTp = document.getElementById('setting-mirror-tp').checked;
+
+      if (!entry || isNaN(parseFloat(entry))) {
+        showToast('Please enter a valid entry price.', true);
+        return;
+      }
+
+      if (isNaN(lots) || lots <= 0) {
+        showToast('Please enter a valid lot size.', true);
+        return;
+      }
+
+      const hedgeDir = autoHedge ? (currentDirection === 'BUY' ? 'SELL' : 'BUY') : currentDirection;
+      const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
+
+      const trade = {
+        id: Date.now(),
+        time: new Date().toLocaleString(),
+        pair: pair,
+        propDirection: currentDirection,
+        hedgeDirection: hedgeDir,
+        lots: hedgeLots,
+        entry: parseFloat(entry),
+        sl: mirrorSl && sl ? parseFloat(sl) : null,
+        tp: mirrorTp && tp ? parseFloat(tp) : null,
+        closePrice: null,
+        pnl: null,
+        status: 'open'
+      };
+
+      trades.unshift(trade);
+      saveTrades();
+      renderTrades();
+      updateStats();
+      showToast(`Hedge created: ${hedgeDir} ${hedgeLots} lots ${pair} @ ${entry}`);
+
+      // Reset entry fields
+      document.getElementById('input-entry').value = '';
+      document.getElementById('input-sl').value = '';
+      document.getElementById('input-tp').value = '';
+    }
+
+    function openCloseModal(id) {
+      closingTradeId = id;
+      document.getElementById('close-price-input').value = '';
+      document.getElementById('close-modal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('close-modal').classList.remove('active');
+      closingTradeId = null;
+    }
+
+    function confirmClose() {
+      const closePrice = parseFloat(document.getElementById('close-price-input').value);
+      if (isNaN(closePrice)) {
+        showToast('Please enter a valid close price.', true);
+        return;
+      }
+
+      const trade = trades.find(t => t.id === closingTradeId);
+      if (!trade) return;
+
+      trade.closePrice = closePrice;
+      trade.status = 'closed';
+
+      // Calculate P/L in pips and USD estimate
+      // For simplicity: pip value depends on pair, using approximate calc
+      const pipSize = trade.pair.includes('JPY') ? 0.01 : 0.0001;
+      const pips = trade.hedgeDirection === 'BUY'
+        ? (closePrice - trade.entry) / pipSize
+        : (trade.entry - closePrice) / pipSize;
+
+      // Rough USD P/L: ~$10 per pip per standard lot for most pairs
+      const pipValue = trade.pair.includes('JPY') ? 6.5 : 10;
+      trade.pnl = parseFloat((pips * pipValue * trade.lots).toFixed(2));
+
+      saveTrades();
+      renderTrades();
+      updateStats();
+      closeModal();
+
+      const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
+      showToast(`Trade closed: ${trade.pair} ${pnlStr}`);
+    }
+
+    function deleteTrade(id) {
+      trades = trades.filter(t => t.id !== id);
+      saveTrades();
+      renderTrades();
+      updateStats();
+    }
+
+    function renderTrades() {
+      const tbody = document.getElementById('trade-log-body');
+      const emptyState = document.getElementById('empty-state');
+
+      if (trades.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+      tbody.innerHTML = trades.map(t => `
+        <tr>
+          <td>${t.time}</td>
+          <td>${t.pair}</td>
+          <td class="direction-cell ${t.propDirection === 'BUY' ? 'buy-text' : 'sell-text'}">${t.propDirection}</td>
+          <td class="direction-cell ${t.hedgeDirection === 'BUY' ? 'buy-text' : 'sell-text'}">${t.hedgeDirection}</td>
+          <td>${t.lots}</td>
+          <td>${t.entry}</td>
+          <td>${t.sl !== null ? t.sl : '--'}</td>
+          <td>${t.tp !== null ? t.tp : '--'}</td>
+          <td>${t.closePrice !== null ? t.closePrice : '--'}</td>
+          <td class="${t.pnl !== null ? (t.pnl >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnl !== null ? (t.pnl >= 0 ? '+' : '') + '$' + Math.abs(t.pnl).toFixed(2) : '--'}</td>
+          <td><span class="status-badge ${t.status === 'open' ? 'status-open' : 'status-closed'}">${t.status.toUpperCase()}</span></td>
+          <td class="trade-actions">
+            ${t.status === 'open' ? `<button class="btn btn-sm btn-primary" onclick="openCloseModal(${t.id})">Close</button>` : ''}
+            <button class="btn btn-sm btn-outline" onclick="deleteTrade(${t.id})">Del</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function updateStats() {
+      const openTrades = trades.filter(t => t.status === 'open');
+      const closedTrades = trades.filter(t => t.status === 'closed');
+      const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+      const wins = closedTrades.filter(t => t.pnl > 0).length;
+
+      document.getElementById('stat-open').textContent = openTrades.length;
+
+      const pnlEl = document.getElementById('stat-pnl');
+      pnlEl.textContent = (totalPnl >= 0 ? '+' : '-') + '$' + Math.abs(totalPnl).toFixed(2);
+      pnlEl.className = 'header-stat-value ' + (totalPnl >= 0 ? 'positive' : 'negative');
+
+      const winrateEl = document.getElementById('stat-winrate');
+      if (closedTrades.length > 0) {
+        const rate = ((wins / closedTrades.length) * 100).toFixed(0);
+        winrateEl.textContent = rate + '%';
+        winrateEl.className = 'header-stat-value ' + (rate >= 50 ? 'positive' : 'negative');
+      } else {
+        winrateEl.textContent = '--';
+        winrateEl.className = 'header-stat-value';
+      }
+    }
+
+    function saveTrades() {
+      localStorage.setItem('hedgeTrades', JSON.stringify(trades));
+    }
+
+    function showToast(msg, warn) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast' + (warn ? ' toast-warn' : '');
+      toast.textContent = msg;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function exportTrades() {
+      if (trades.length === 0) {
+        showToast('No trades to export.', true);
+        return;
+      }
+      const headers = ['Time', 'Pair', 'Prop Direction', 'Hedge Direction', 'Lots', 'Entry', 'SL', 'TP', 'Close Price', 'P/L', 'Status'];
+      const rows = trades.map(t => [
+        t.time, t.pair, t.propDirection, t.hedgeDirection, t.lots,
+        t.entry, t.sl || '', t.tp || '', t.closePrice || '', t.pnl || '', t.status
+      ]);
+      const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'hedge_trades_' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Trades exported successfully.');
+    }
+
+    function clearAllTrades() {
+      if (trades.length === 0) return;
+      if (confirm('Are you sure you want to clear all trades? This cannot be undone.')) {
+        trades = [];
+        saveTrades();
+        renderTrades();
+        updateStats();
+        showToast('All trades cleared.');
+      }
+    }
+
+    // Initialize
+    renderTrades();
+    updateStats();
+  </script>
+</body>
+</html>
