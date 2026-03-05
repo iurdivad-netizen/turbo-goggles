@@ -13,6 +13,7 @@
       --accent-hover: #00e6ac;
       --danger: #e74c5f;
       --danger-hover: #ff5c72;
+      --warning: #f0a030;
       --text-primary: #e8edf2;
       --text-secondary: #8899aa;
       --border: #2a3a4a;
@@ -92,9 +93,10 @@
 
     .header-stat-value.positive { color: var(--buy-color); }
     .header-stat-value.negative { color: var(--sell-color); }
+    .header-stat-value.warning { color: var(--warning); }
 
     main {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 1.5rem;
       display: grid;
@@ -125,6 +127,9 @@
       background: var(--accent);
     }
 
+    .card-title .dot-warn { background: var(--warning); }
+    .card-title .dot-danger { background: var(--danger); }
+
     /* Signal Input Form */
     .form-group {
       margin-bottom: 1rem;
@@ -140,6 +145,12 @@
     .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .form-row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 0.75rem;
     }
 
@@ -277,6 +288,82 @@
     .badge-sell {
       background: rgba(231, 76, 95, 0.15);
       color: var(--sell-color);
+    }
+
+    .risk-preview {
+      margin-top: 0.6rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 1rem;
+    }
+
+    .risk-preview span { font-weight: 600; }
+    .risk-preview .risk-amt { color: var(--sell-color); }
+    .risk-preview .reward-amt { color: var(--buy-color); }
+
+    /* Progress bars */
+    .progress-container {
+      margin-bottom: 0.75rem;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      margin-bottom: 0.3rem;
+    }
+
+    .progress-label-name {
+      color: var(--text-secondary);
+    }
+
+    .progress-label-value {
+      font-weight: 600;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: var(--bg-primary);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    .progress-fill.green { background: var(--buy-color); }
+    .progress-fill.red { background: var(--sell-color); }
+    .progress-fill.orange { background: var(--warning); }
+
+    /* Challenge stats grid */
+    .challenge-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      margin-top: 0.75rem;
+    }
+
+    .challenge-stat-box {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+    }
+
+    .challenge-stat-box .csl {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      letter-spacing: 0.03em;
+    }
+
+    .challenge-stat-box .csv {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-top: 0.15rem;
     }
 
     /* Trade Log */
@@ -507,6 +594,64 @@
       flex: 1;
     }
 
+    /* Phase selector tabs */
+    .phase-tabs {
+      display: flex;
+      gap: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+
+    .phase-tab {
+      flex: 1;
+      padding: 0.5rem;
+      border: none;
+      background: var(--bg-primary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .phase-tab.active {
+      background: var(--accent);
+      color: var(--bg-primary);
+    }
+
+    /* Day counter */
+    .day-counter {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .day-counter strong {
+      color: var(--text-primary);
+    }
+
+    /* Breach alert */
+    .breach-alert {
+      background: rgba(231, 76, 95, 0.1);
+      border: 1px solid rgba(231, 76, 95, 0.3);
+      border-radius: 8px;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.8rem;
+      color: var(--sell-color);
+      margin-top: 0.75rem;
+      display: none;
+    }
+
+    .breach-alert.visible {
+      display: block;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       main {
@@ -523,7 +668,11 @@
         justify-content: center;
       }
 
-      .form-row {
+      .form-row, .form-row-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .challenge-stats {
         grid-template-columns: 1fr;
       }
     }
@@ -545,6 +694,14 @@
         <div class="header-stat-value" id="stat-pnl">$0.00</div>
       </div>
       <div class="header-stat">
+        <div class="header-stat-label">Total Risk</div>
+        <div class="header-stat-value" id="stat-risk">$0.00</div>
+      </div>
+      <div class="header-stat">
+        <div class="header-stat-label">Total Reward</div>
+        <div class="header-stat-value" id="stat-reward">$0.00</div>
+      </div>
+      <div class="header-stat">
         <div class="header-stat-label">Win Rate</div>
         <div class="header-stat-value" id="stat-winrate">--</div>
       </div>
@@ -552,6 +709,122 @@
   </header>
 
   <main>
+    <!-- Prop Firm Challenge Card -->
+    <div class="card full-width">
+      <div class="card-title"><span class="dot dot-warn"></span> Prop Firm Challenge Tracker</div>
+
+      <div class="phase-tabs">
+        <button class="phase-tab active" onclick="setPhase('phase1')">Phase 1</button>
+        <button class="phase-tab" onclick="setPhase('phase2')">Phase 2</button>
+        <button class="phase-tab" onclick="setPhase('funded')">Funded</button>
+      </div>
+
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Account Size ($)</label>
+          <input type="number" id="challenge-balance" placeholder="e.g. 100000" oninput="saveChallenge(); updateChallenge();">
+        </div>
+        <div class="form-group">
+          <label>Profit Target (%)</label>
+          <input type="number" id="challenge-profit-target" step="0.1" placeholder="e.g. 8" oninput="saveChallenge(); updateChallenge();">
+        </div>
+        <div class="form-group">
+          <label>Max Daily Loss (%)</label>
+          <input type="number" id="challenge-daily-loss" step="0.1" placeholder="e.g. 5" oninput="saveChallenge(); updateChallenge();">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Max Total Drawdown (%)</label>
+          <input type="number" id="challenge-max-dd" step="0.1" placeholder="e.g. 10" oninput="saveChallenge(); updateChallenge();">
+        </div>
+        <div class="form-group">
+          <label>Min Trading Days</label>
+          <input type="number" id="challenge-min-days" placeholder="e.g. 5" oninput="saveChallenge(); updateChallenge();">
+        </div>
+        <div class="form-group">
+          <label>Time Limit (days)</label>
+          <input type="number" id="challenge-time-limit" placeholder="e.g. 30" oninput="saveChallenge(); updateChallenge();">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Max Lot Size (0 = unlimited)</label>
+          <input type="number" id="challenge-max-lots" step="0.01" placeholder="e.g. 10" oninput="saveChallenge(); updateChallenge();">
+        </div>
+        <div class="form-group">
+          <label>Profit Split (% to you)</label>
+          <input type="number" id="challenge-profit-split" step="1" placeholder="e.g. 80" oninput="saveChallenge(); updateChallenge();">
+        </div>
+        <div class="form-group">
+          <label>Start Date</label>
+          <input type="date" id="challenge-start-date" oninput="saveChallenge(); updateChallenge();">
+        </div>
+      </div>
+
+      <div id="challenge-day-counter" class="day-counter"></div>
+
+      <!-- Progress bars -->
+      <div class="progress-container">
+        <div class="progress-label">
+          <span class="progress-label-name">Profit Target</span>
+          <span class="progress-label-value" id="progress-profit-label">$0 / $0 (0%)</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill green" id="progress-profit-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="progress-container">
+        <div class="progress-label">
+          <span class="progress-label-name">Daily Loss Used</span>
+          <span class="progress-label-value" id="progress-daily-label">$0 / $0 (0%)</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill orange" id="progress-daily-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="progress-container">
+        <div class="progress-label">
+          <span class="progress-label-name">Total Drawdown Used</span>
+          <span class="progress-label-value" id="progress-dd-label">$0 / $0 (0%)</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill red" id="progress-dd-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="challenge-stats" id="challenge-stats-grid">
+        <div class="challenge-stat-box">
+          <div class="csl">Current Balance</div>
+          <div class="csv" id="cs-balance">--</div>
+        </div>
+        <div class="challenge-stat-box">
+          <div class="csl">Profit Target $</div>
+          <div class="csv" id="cs-target">--</div>
+        </div>
+        <div class="challenge-stat-box">
+          <div class="csl">Daily Loss Limit $</div>
+          <div class="csv" id="cs-daily-limit">--</div>
+        </div>
+        <div class="challenge-stat-box">
+          <div class="csl">Max Drawdown $</div>
+          <div class="csv" id="cs-max-dd">--</div>
+        </div>
+        <div class="challenge-stat-box">
+          <div class="csl">Days Traded</div>
+          <div class="csv" id="cs-days-traded">--</div>
+        </div>
+        <div class="challenge-stat-box">
+          <div class="csl">Avg Risk:Reward</div>
+          <div class="csv" id="cs-avg-rr">--</div>
+        </div>
+      </div>
+
+      <div class="breach-alert" id="breach-alert">
+        BREACH WARNING: You are approaching or have exceeded a challenge limit!
+      </div>
+    </div>
+
     <!-- Signal Input Card -->
     <div class="card">
       <div class="card-title"><span class="dot"></span> New Prop Firm Signal</div>
@@ -568,6 +841,9 @@
           <option value="EUR/GBP">EUR/GBP</option>
           <option value="EUR/JPY">EUR/JPY</option>
           <option value="GBP/JPY">GBP/JPY</option>
+          <option value="XAU/USD">XAU/USD (Gold)</option>
+          <option value="US30">US30 (Dow Jones)</option>
+          <option value="NAS100">NAS100 (Nasdaq)</option>
         </select>
       </div>
       <div class="form-group">
@@ -590,11 +866,11 @@
       <div class="form-row">
         <div class="form-group">
           <label>Stop Loss</label>
-          <input type="number" id="input-sl" step="0.00001" placeholder="Optional">
+          <input type="number" id="input-sl" step="0.00001" placeholder="Required for risk calc" oninput="updateRiskPreview()">
         </div>
         <div class="form-group">
           <label>Take Profit</label>
-          <input type="number" id="input-tp" step="0.00001" placeholder="Optional">
+          <input type="number" id="input-tp" step="0.00001" placeholder="Required for reward calc" oninput="updateRiskPreview()">
         </div>
       </div>
 
@@ -604,6 +880,11 @@
           <span>Prop: <span class="hedge-badge badge-buy" id="preview-prop">BUY</span></span>
           <span class="arrow">&rarr;</span>
           <span>Personal: <span class="hedge-badge badge-sell" id="preview-personal">SELL</span></span>
+        </div>
+        <div class="risk-preview" id="risk-preview">
+          <div>Risk: <span class="risk-amt" id="preview-risk">--</span></div>
+          <div>Reward: <span class="reward-amt" id="preview-reward">--</span></div>
+          <div>R:R <span id="preview-rr">--</span></div>
         </div>
       </div>
 
@@ -640,6 +921,10 @@
           <input type="number" id="setting-multiplier" value="1.0" min="0.1" step="0.1">
         </div>
         <div class="form-group">
+          <label>Risk Per Trade (% of account)</label>
+          <input type="number" id="setting-risk-pct" value="1.0" min="0.1" step="0.1">
+        </div>
+        <div class="form-group">
           <label>Notes / Strategy Memo</label>
           <input type="text" id="setting-notes" placeholder="e.g. Only hedge during London session">
         </div>
@@ -665,6 +950,9 @@
               <th>Entry</th>
               <th>SL</th>
               <th>TP</th>
+              <th>Risk $</th>
+              <th>Reward $</th>
+              <th>R:R</th>
               <th>Close Price</th>
               <th>P/L</th>
               <th>Status</th>
@@ -703,27 +991,85 @@
 
   <script>
     let trades = JSON.parse(localStorage.getItem('hedgeTrades') || '[]');
+    let challenge = JSON.parse(localStorage.getItem('hedgeChallenge') || '{}');
     let currentDirection = 'BUY';
     let closingTradeId = null;
+    let currentPhase = challenge.phase || 'phase1';
 
-    function setDirection(dir) {
-      currentDirection = dir;
-      const btnBuy = document.getElementById('btn-buy');
-      const btnSell = document.getElementById('btn-sell');
-      const previewProp = document.getElementById('preview-prop');
-      const previewPersonal = document.getElementById('preview-personal');
-
-      btnBuy.className = dir === 'BUY' ? 'active-buy' : '';
-      btnSell.className = dir === 'SELL' ? 'active-sell' : '';
-
-      const hedgeDir = dir === 'BUY' ? 'SELL' : 'BUY';
-
-      previewProp.textContent = dir;
-      previewProp.className = 'hedge-badge ' + (dir === 'BUY' ? 'badge-buy' : 'badge-sell');
-      previewPersonal.textContent = hedgeDir;
-      previewPersonal.className = 'hedge-badge ' + (hedgeDir === 'BUY' ? 'badge-buy' : 'badge-sell');
+    // ── Pip / dollar helpers ──
+    function getPipSize(pair) {
+      if (pair.includes('JPY')) return 0.01;
+      if (pair === 'XAU/USD') return 0.1;
+      if (pair === 'US30' || pair === 'NAS100') return 1;
+      return 0.0001;
     }
 
+    function getPipValue(pair, lots) {
+      // Approximate USD per pip per lot
+      if (pair === 'XAU/USD') return 10 * lots;   // $10/pip per lot (0.1 pip size)
+      if (pair === 'US30') return 10 * lots;
+      if (pair === 'NAS100') return 10 * lots;
+      if (pair.includes('JPY')) return 6.5 * lots; // ~$6.5/pip per mini lot approx
+      return 10 * lots; // standard pairs ~$10/pip per standard lot
+    }
+
+    function calcPips(pair, entry, exit, direction) {
+      const pipSize = getPipSize(pair);
+      if (direction === 'BUY') return (exit - entry) / pipSize;
+      return (entry - exit) / pipSize;
+    }
+
+    function calcRiskReward(pair, lots, entry, sl, tp, direction) {
+      const result = { riskPips: 0, rewardPips: 0, risk$: 0, reward$: 0, rr: 0 };
+      if (entry && sl) {
+        result.riskPips = Math.abs(calcPips(pair, entry, sl, direction));
+        result.risk$ = Math.abs(result.riskPips * getPipValue(pair, lots));
+      }
+      if (entry && tp) {
+        result.rewardPips = Math.abs(calcPips(pair, entry, tp, direction));
+        result.reward$ = Math.abs(result.rewardPips * getPipValue(pair, lots));
+      }
+      if (result.risk$ > 0 && result.reward$ > 0) {
+        result.rr = result.reward$ / result.risk$;
+      }
+      return result;
+    }
+
+    // ── Direction toggle ──
+    function setDirection(dir) {
+      currentDirection = dir;
+      document.getElementById('btn-buy').className = dir === 'BUY' ? 'active-buy' : '';
+      document.getElementById('btn-sell').className = dir === 'SELL' ? 'active-sell' : '';
+
+      const hedgeDir = dir === 'BUY' ? 'SELL' : 'BUY';
+      const pp = document.getElementById('preview-prop');
+      const ph = document.getElementById('preview-personal');
+      pp.textContent = dir;
+      pp.className = 'hedge-badge ' + (dir === 'BUY' ? 'badge-buy' : 'badge-sell');
+      ph.textContent = hedgeDir;
+      ph.className = 'hedge-badge ' + (hedgeDir === 'BUY' ? 'badge-buy' : 'badge-sell');
+      updateRiskPreview();
+    }
+
+    function updateRiskPreview() {
+      const pair = document.getElementById('input-pair').value;
+      const lots = parseFloat(document.getElementById('input-lots').value) || 0;
+      const entry = parseFloat(document.getElementById('input-entry').value);
+      const sl = parseFloat(document.getElementById('input-sl').value);
+      const tp = parseFloat(document.getElementById('input-tp').value);
+      const autoHedge = document.getElementById('setting-auto-hedge').checked;
+      const hedgeDir = autoHedge ? (currentDirection === 'BUY' ? 'SELL' : 'BUY') : currentDirection;
+      const multiplier = parseFloat(document.getElementById('setting-multiplier').value) || 1;
+      const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
+
+      const rr = calcRiskReward(pair, hedgeLots, entry, sl, tp, hedgeDir);
+
+      document.getElementById('preview-risk').textContent = rr.risk$ > 0 ? '$' + rr.risk$.toFixed(2) : '--';
+      document.getElementById('preview-reward').textContent = rr.reward$ > 0 ? '$' + rr.reward$.toFixed(2) : '--';
+      document.getElementById('preview-rr').textContent = rr.rr > 0 ? '1:' + rr.rr.toFixed(2) : '--';
+    }
+
+    // ── Add signal ──
     function addSignal() {
       const pair = document.getElementById('input-pair').value;
       const lots = parseFloat(document.getElementById('input-lots').value);
@@ -739,25 +1085,40 @@
         showToast('Please enter a valid entry price.', true);
         return;
       }
-
       if (isNaN(lots) || lots <= 0) {
         showToast('Please enter a valid lot size.', true);
         return;
       }
 
+      // Check max lot size if set
+      const maxLots = parseFloat(document.getElementById('challenge-max-lots').value) || 0;
+      if (maxLots > 0 && lots > maxLots) {
+        showToast(`Lot size exceeds challenge max of ${maxLots}!`, true);
+        return;
+      }
+
       const hedgeDir = autoHedge ? (currentDirection === 'BUY' ? 'SELL' : 'BUY') : currentDirection;
       const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
+      const entryNum = parseFloat(entry);
+      const slNum = mirrorSl && sl ? parseFloat(sl) : null;
+      const tpNum = mirrorTp && tp ? parseFloat(tp) : null;
+
+      const rr = calcRiskReward(pair, hedgeLots, entryNum, slNum, tpNum, hedgeDir);
 
       const trade = {
         id: Date.now(),
         time: new Date().toLocaleString(),
+        date: new Date().toISOString().slice(0, 10),
         pair: pair,
         propDirection: currentDirection,
         hedgeDirection: hedgeDir,
         lots: hedgeLots,
-        entry: parseFloat(entry),
-        sl: mirrorSl && sl ? parseFloat(sl) : null,
-        tp: mirrorTp && tp ? parseFloat(tp) : null,
+        entry: entryNum,
+        sl: slNum,
+        tp: tpNum,
+        riskAmt: rr.risk$ > 0 ? parseFloat(rr.risk$.toFixed(2)) : null,
+        rewardAmt: rr.reward$ > 0 ? parseFloat(rr.reward$.toFixed(2)) : null,
+        rrRatio: rr.rr > 0 ? parseFloat(rr.rr.toFixed(2)) : null,
         closePrice: null,
         pnl: null,
         status: 'open'
@@ -767,14 +1128,16 @@
       saveTrades();
       renderTrades();
       updateStats();
+      updateChallenge();
       showToast(`Hedge created: ${hedgeDir} ${hedgeLots} lots ${pair} @ ${entry}`);
 
-      // Reset entry fields
       document.getElementById('input-entry').value = '';
       document.getElementById('input-sl').value = '';
       document.getElementById('input-tp').value = '';
+      updateRiskPreview();
     }
 
+    // ── Close trade ──
     function openCloseModal(id) {
       closingTradeId = id;
       document.getElementById('close-price-input').value = '';
@@ -799,20 +1162,13 @@
       trade.closePrice = closePrice;
       trade.status = 'closed';
 
-      // Calculate P/L in pips and USD estimate
-      // For simplicity: pip value depends on pair, using approximate calc
-      const pipSize = trade.pair.includes('JPY') ? 0.01 : 0.0001;
-      const pips = trade.hedgeDirection === 'BUY'
-        ? (closePrice - trade.entry) / pipSize
-        : (trade.entry - closePrice) / pipSize;
-
-      // Rough USD P/L: ~$10 per pip per standard lot for most pairs
-      const pipValue = trade.pair.includes('JPY') ? 6.5 : 10;
-      trade.pnl = parseFloat((pips * pipValue * trade.lots).toFixed(2));
+      const pips = calcPips(trade.pair, trade.entry, closePrice, trade.hedgeDirection);
+      trade.pnl = parseFloat((pips * getPipValue(trade.pair, trade.lots)).toFixed(2));
 
       saveTrades();
       renderTrades();
       updateStats();
+      updateChallenge();
       closeModal();
 
       const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
@@ -824,8 +1180,10 @@
       saveTrades();
       renderTrades();
       updateStats();
+      updateChallenge();
     }
 
+    // ── Render trades ──
     function renderTrades() {
       const tbody = document.getElementById('trade-log-body');
       const emptyState = document.getElementById('empty-state');
@@ -847,6 +1205,9 @@
           <td>${t.entry}</td>
           <td>${t.sl !== null ? t.sl : '--'}</td>
           <td>${t.tp !== null ? t.tp : '--'}</td>
+          <td class="sell-text">${t.riskAmt !== null ? '$' + t.riskAmt.toFixed(2) : '--'}</td>
+          <td class="buy-text">${t.rewardAmt !== null ? '$' + t.rewardAmt.toFixed(2) : '--'}</td>
+          <td>${t.rrRatio !== null ? '1:' + t.rrRatio.toFixed(2) : '--'}</td>
           <td>${t.closePrice !== null ? t.closePrice : '--'}</td>
           <td class="${t.pnl !== null ? (t.pnl >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnl !== null ? (t.pnl >= 0 ? '+' : '') + '$' + Math.abs(t.pnl).toFixed(2) : '--'}</td>
           <td><span class="status-badge ${t.status === 'open' ? 'status-open' : 'status-closed'}">${t.status.toUpperCase()}</span></td>
@@ -858,17 +1219,26 @@
       `).join('');
     }
 
+    // ── Stats ──
     function updateStats() {
       const openTrades = trades.filter(t => t.status === 'open');
       const closedTrades = trades.filter(t => t.status === 'closed');
       const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
       const wins = closedTrades.filter(t => t.pnl > 0).length;
+      const totalRisk = trades.reduce((sum, t) => sum + (t.riskAmt || 0), 0);
+      const totalReward = trades.reduce((sum, t) => sum + (t.rewardAmt || 0), 0);
 
       document.getElementById('stat-open').textContent = openTrades.length;
 
       const pnlEl = document.getElementById('stat-pnl');
       pnlEl.textContent = (totalPnl >= 0 ? '+' : '-') + '$' + Math.abs(totalPnl).toFixed(2);
       pnlEl.className = 'header-stat-value ' + (totalPnl >= 0 ? 'positive' : 'negative');
+
+      document.getElementById('stat-risk').textContent = '$' + totalRisk.toFixed(2);
+      document.getElementById('stat-risk').className = 'header-stat-value negative';
+
+      document.getElementById('stat-reward').textContent = '$' + totalReward.toFixed(2);
+      document.getElementById('stat-reward').className = 'header-stat-value positive';
 
       const winrateEl = document.getElementById('stat-winrate');
       if (closedTrades.length > 0) {
@@ -881,6 +1251,146 @@
       }
     }
 
+    // ── Challenge tracker ──
+    function setPhase(phase) {
+      currentPhase = phase;
+      document.querySelectorAll('.phase-tab').forEach((tab, i) => {
+        const phases = ['phase1', 'phase2', 'funded'];
+        tab.classList.toggle('active', phases[i] === phase);
+      });
+      challenge.phase = phase;
+      loadChallengeFields();
+      saveChallenge();
+      updateChallenge();
+    }
+
+    function loadChallengeFields() {
+      const p = challenge[currentPhase] || {};
+      document.getElementById('challenge-balance').value = p.balance || '';
+      document.getElementById('challenge-profit-target').value = p.profitTarget || '';
+      document.getElementById('challenge-daily-loss').value = p.dailyLoss || '';
+      document.getElementById('challenge-max-dd').value = p.maxDD || '';
+      document.getElementById('challenge-min-days').value = p.minDays || '';
+      document.getElementById('challenge-time-limit').value = p.timeLimit || '';
+      document.getElementById('challenge-max-lots').value = p.maxLots || '';
+      document.getElementById('challenge-profit-split').value = p.profitSplit || '';
+      document.getElementById('challenge-start-date').value = p.startDate || '';
+    }
+
+    function saveChallenge() {
+      if (!challenge[currentPhase]) challenge[currentPhase] = {};
+      const p = challenge[currentPhase];
+      p.balance = parseFloat(document.getElementById('challenge-balance').value) || 0;
+      p.profitTarget = parseFloat(document.getElementById('challenge-profit-target').value) || 0;
+      p.dailyLoss = parseFloat(document.getElementById('challenge-daily-loss').value) || 0;
+      p.maxDD = parseFloat(document.getElementById('challenge-max-dd').value) || 0;
+      p.minDays = parseInt(document.getElementById('challenge-min-days').value) || 0;
+      p.timeLimit = parseInt(document.getElementById('challenge-time-limit').value) || 0;
+      p.maxLots = parseFloat(document.getElementById('challenge-max-lots').value) || 0;
+      p.profitSplit = parseFloat(document.getElementById('challenge-profit-split').value) || 0;
+      p.startDate = document.getElementById('challenge-start-date').value || '';
+      challenge.phase = currentPhase;
+      localStorage.setItem('hedgeChallenge', JSON.stringify(challenge));
+    }
+
+    function updateChallenge() {
+      const p = challenge[currentPhase] || {};
+      const balance = p.balance || 0;
+      const profitTargetPct = p.profitTarget || 0;
+      const dailyLossPct = p.dailyLoss || 0;
+      const maxDDPct = p.maxDD || 0;
+      const minDays = p.minDays || 0;
+      const timeLimit = p.timeLimit || 0;
+      const startDate = p.startDate;
+      const profitSplit = p.profitSplit || 0;
+
+      const profitTarget$ = balance * profitTargetPct / 100;
+      const dailyLossLimit$ = balance * dailyLossPct / 100;
+      const maxDD$ = balance * maxDDPct / 100;
+
+      // Compute P/L from closed trades
+      const closedTrades = trades.filter(t => t.status === 'closed');
+      const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+
+      // Today's P/L
+      const today = new Date().toISOString().slice(0, 10);
+      const todayPnl = closedTrades
+        .filter(t => t.date === today)
+        .reduce((sum, t) => sum + (t.pnl || 0), 0);
+
+      // Max drawdown (running worst loss from peak)
+      let peak = 0, maxDrawdown = 0, running = 0;
+      closedTrades.slice().reverse().forEach(t => {
+        running += (t.pnl || 0);
+        if (running > peak) peak = running;
+        const dd = peak - running;
+        if (dd > maxDrawdown) maxDrawdown = dd;
+      });
+
+      // Trading days
+      const tradeDays = new Set(trades.map(t => t.date)).size;
+
+      // Day counter
+      const dayCounterEl = document.getElementById('challenge-day-counter');
+      if (startDate && timeLimit) {
+        const start = new Date(startDate);
+        const now = new Date();
+        const elapsed = Math.floor((now - start) / 86400000);
+        const remaining = Math.max(0, timeLimit - elapsed);
+        dayCounterEl.innerHTML = `Day <strong>${elapsed}</strong> of <strong>${timeLimit}</strong> &mdash; <strong>${remaining}</strong> days remaining`;
+      } else {
+        dayCounterEl.innerHTML = '';
+      }
+
+      // Progress bars
+      const profitPct = profitTarget$ > 0 ? Math.min(100, Math.max(0, (totalPnl / profitTarget$) * 100)) : 0;
+      document.getElementById('progress-profit-fill').style.width = profitPct + '%';
+      document.getElementById('progress-profit-label').textContent = balance > 0
+        ? `$${totalPnl.toFixed(2)} / $${profitTarget$.toFixed(2)} (${profitPct.toFixed(1)}%)`
+        : '$0 / $0 (0%)';
+
+      const dailyLossPctUsed = dailyLossLimit$ > 0 ? Math.min(100, Math.max(0, (Math.abs(Math.min(0, todayPnl)) / dailyLossLimit$) * 100)) : 0;
+      document.getElementById('progress-daily-fill').style.width = dailyLossPctUsed + '%';
+      document.getElementById('progress-daily-fill').className = 'progress-fill ' + (dailyLossPctUsed > 80 ? 'red' : 'orange');
+      document.getElementById('progress-daily-label').textContent = balance > 0
+        ? `$${Math.abs(Math.min(0, todayPnl)).toFixed(2)} / $${dailyLossLimit$.toFixed(2)} (${dailyLossPctUsed.toFixed(1)}%)`
+        : '$0 / $0 (0%)';
+
+      const ddPctUsed = maxDD$ > 0 ? Math.min(100, Math.max(0, (maxDrawdown / maxDD$) * 100)) : 0;
+      document.getElementById('progress-dd-fill').style.width = ddPctUsed + '%';
+      document.getElementById('progress-dd-label').textContent = balance > 0
+        ? `$${maxDrawdown.toFixed(2)} / $${maxDD$.toFixed(2)} (${ddPctUsed.toFixed(1)}%)`
+        : '$0 / $0 (0%)';
+
+      // Stats boxes
+      document.getElementById('cs-balance').textContent = balance > 0 ? '$' + (balance + totalPnl).toFixed(2) : '--';
+      document.getElementById('cs-target').textContent = profitTarget$ > 0 ? '$' + profitTarget$.toFixed(2) : '--';
+      document.getElementById('cs-daily-limit').textContent = dailyLossLimit$ > 0 ? '$' + dailyLossLimit$.toFixed(2) : '--';
+      document.getElementById('cs-max-dd').textContent = maxDD$ > 0 ? '$' + maxDD$.toFixed(2) : '--';
+      document.getElementById('cs-days-traded').textContent = tradeDays > 0 ? `${tradeDays}` + (minDays > 0 ? ` / ${minDays}` : '') : '--';
+
+      // Average R:R
+      const rrTrades = trades.filter(t => t.rrRatio !== null && t.rrRatio > 0);
+      const avgRR = rrTrades.length > 0 ? rrTrades.reduce((s, t) => s + t.rrRatio, 0) / rrTrades.length : 0;
+      document.getElementById('cs-avg-rr').textContent = avgRR > 0 ? '1:' + avgRR.toFixed(2) : '--';
+
+      // Breach warning
+      const breachEl = document.getElementById('breach-alert');
+      let breached = false;
+      let breachMsg = [];
+      if (dailyLossLimit$ > 0 && Math.abs(Math.min(0, todayPnl)) >= dailyLossLimit$ * 0.8) {
+        breached = true;
+        breachMsg.push('Daily loss limit ' + (Math.abs(Math.min(0, todayPnl)) >= dailyLossLimit$ ? 'BREACHED' : 'approaching (>80%)'));
+      }
+      if (maxDD$ > 0 && maxDrawdown >= maxDD$ * 0.8) {
+        breached = true;
+        breachMsg.push('Max drawdown ' + (maxDrawdown >= maxDD$ ? 'BREACHED' : 'approaching (>80%)'));
+      }
+      breachEl.textContent = breached ? 'BREACH WARNING: ' + breachMsg.join(' | ') : '';
+      breachEl.classList.toggle('visible', breached);
+    }
+
+    // ── Persistence ──
     function saveTrades() {
       localStorage.setItem('hedgeTrades', JSON.stringify(trades));
     }
@@ -899,10 +1409,11 @@
         showToast('No trades to export.', true);
         return;
       }
-      const headers = ['Time', 'Pair', 'Prop Direction', 'Hedge Direction', 'Lots', 'Entry', 'SL', 'TP', 'Close Price', 'P/L', 'Status'];
+      const headers = ['Time', 'Date', 'Pair', 'Prop Direction', 'Hedge Direction', 'Lots', 'Entry', 'SL', 'TP', 'Risk $', 'Reward $', 'R:R', 'Close Price', 'P/L', 'Status'];
       const rows = trades.map(t => [
-        t.time, t.pair, t.propDirection, t.hedgeDirection, t.lots,
-        t.entry, t.sl || '', t.tp || '', t.closePrice || '', t.pnl || '', t.status
+        t.time, t.date || '', t.pair, t.propDirection, t.hedgeDirection, t.lots,
+        t.entry, t.sl || '', t.tp || '', t.riskAmt || '', t.rewardAmt || '',
+        t.rrRatio ? '1:' + t.rrRatio : '', t.closePrice || '', t.pnl || '', t.status
       ]);
       const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -922,13 +1433,16 @@
         saveTrades();
         renderTrades();
         updateStats();
+        updateChallenge();
         showToast('All trades cleared.');
       }
     }
 
-    // Initialize
+    // ── Initialize ──
+    loadChallengeFields();
     renderTrades();
     updateStats();
+    updateChallenge();
   </script>
 </body>
 </html>
