@@ -295,7 +295,8 @@
       font-size: 0.8rem;
       color: var(--text-secondary);
       display: flex;
-      gap: 1rem;
+      gap: 0.75rem;
+      flex-wrap: wrap;
     }
 
     .risk-preview span { font-weight: 600; }
@@ -863,14 +864,21 @@
           <input type="number" id="input-entry" step="0.00001" placeholder="e.g. 1.08450">
         </div>
       </div>
+      <div class="form-group">
+        <label>SL/TP Input Mode</label>
+        <div class="direction-toggle">
+          <button type="button" id="btn-mode-price" class="active-buy" onclick="setSlTpMode('price')">Price</button>
+          <button type="button" id="btn-mode-pips" onclick="setSlTpMode('pips')">Pips</button>
+        </div>
+      </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Stop Loss</label>
-          <input type="number" id="input-sl" step="0.00001" placeholder="Required for risk calc" oninput="updateRiskPreview()">
+          <label id="label-sl">Stop Loss (price)</label>
+          <input type="number" id="input-sl" step="0.00001" placeholder="Required for risk calc" oninput="syncSlTp('sl'); updateRiskPreview()">
         </div>
         <div class="form-group">
-          <label>Take Profit</label>
-          <input type="number" id="input-tp" step="0.00001" placeholder="Required for reward calc" oninput="updateRiskPreview()">
+          <label id="label-tp">Take Profit (price)</label>
+          <input type="number" id="input-tp" step="0.00001" placeholder="Required for reward calc" oninput="syncSlTp('tp'); updateRiskPreview()">
         </div>
       </div>
 
@@ -882,6 +890,8 @@
           <span>Personal: <span class="hedge-badge badge-sell" id="preview-personal">SELL</span></span>
         </div>
         <div class="risk-preview" id="risk-preview">
+          <div>SL: <span class="risk-amt" id="preview-sl-pips">--</span></div>
+          <div>TP: <span class="reward-amt" id="preview-tp-pips">--</span></div>
           <div>Risk: <span class="risk-amt" id="preview-risk">--</span></div>
           <div>Reward: <span class="reward-amt" id="preview-reward">--</span></div>
           <div>R:R <span id="preview-rr">--</span></div>
@@ -950,11 +960,14 @@
               <th>Entry</th>
               <th>SL</th>
               <th>TP</th>
+              <th>SL Pips</th>
+              <th>TP Pips</th>
               <th>Risk $</th>
               <th>Reward $</th>
               <th>R:R</th>
               <th>Close Price</th>
-              <th>P/L</th>
+              <th>P/L Pips</th>
+              <th>P/L $</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -1035,6 +1048,98 @@
       return result;
     }
 
+    let slTpMode = 'price'; // 'price' or 'pips'
+
+    function setSlTpMode(mode) {
+      slTpMode = mode;
+      document.getElementById('btn-mode-price').className = mode === 'price' ? 'active-buy' : '';
+      document.getElementById('btn-mode-pips').className = mode === 'pips' ? 'active-buy' : '';
+
+      const slLabel = document.getElementById('label-sl');
+      const tpLabel = document.getElementById('label-tp');
+      const slInput = document.getElementById('input-sl');
+      const tpInput = document.getElementById('input-tp');
+
+      if (mode === 'pips') {
+        slLabel.textContent = 'Stop Loss (pips)';
+        tpLabel.textContent = 'Take Profit (pips)';
+        slInput.placeholder = 'e.g. 30';
+        tpInput.placeholder = 'e.g. 60';
+        slInput.step = '1';
+        tpInput.step = '1';
+        // Convert current price values to pips if entry exists
+        const entry = parseFloat(document.getElementById('input-entry').value);
+        const pair = document.getElementById('input-pair').value;
+        const pipSize = getPipSize(pair);
+        if (entry && slInput.value) {
+          const slPrice = parseFloat(slInput.value);
+          slInput.value = Math.round(Math.abs(entry - slPrice) / pipSize);
+        }
+        if (entry && tpInput.value) {
+          const tpPrice = parseFloat(tpInput.value);
+          tpInput.value = Math.round(Math.abs(entry - tpPrice) / pipSize);
+        }
+      } else {
+        slLabel.textContent = 'Stop Loss (price)';
+        tpLabel.textContent = 'Take Profit (price)';
+        slInput.placeholder = 'Required for risk calc';
+        tpInput.placeholder = 'Required for reward calc';
+        slInput.step = '0.00001';
+        tpInput.step = '0.00001';
+        // Convert current pip values to prices if entry exists
+        const entry = parseFloat(document.getElementById('input-entry').value);
+        const pair = document.getElementById('input-pair').value;
+        const pipSize = getPipSize(pair);
+        const dir = currentDirection;
+        if (entry && slInput.value) {
+          const slPips = parseFloat(slInput.value);
+          slInput.value = dir === 'BUY'
+            ? (entry - slPips * pipSize).toFixed(5)
+            : (entry + slPips * pipSize).toFixed(5);
+        }
+        if (entry && tpInput.value) {
+          const tpPips = parseFloat(tpInput.value);
+          tpInput.value = dir === 'BUY'
+            ? (entry + tpPips * pipSize).toFixed(5)
+            : (entry - tpPips * pipSize).toFixed(5);
+        }
+      }
+      updateRiskPreview();
+    }
+
+    // Convert SL/TP from current mode to absolute prices for calculations
+    function getSlTpPrices() {
+      const entry = parseFloat(document.getElementById('input-entry').value);
+      const pair = document.getElementById('input-pair').value;
+      const pipSize = getPipSize(pair);
+      const rawSl = parseFloat(document.getElementById('input-sl').value);
+      const rawTp = parseFloat(document.getElementById('input-tp').value);
+      const dir = currentDirection;
+      let slPrice = null, tpPrice = null, slPips = null, tpPips = null;
+
+      if (slTpMode === 'pips' && entry && !isNaN(rawSl)) {
+        slPips = rawSl;
+        slPrice = dir === 'BUY' ? entry - rawSl * pipSize : entry + rawSl * pipSize;
+      } else if (slTpMode === 'price' && entry && !isNaN(rawSl)) {
+        slPrice = rawSl;
+        slPips = Math.abs(entry - rawSl) / pipSize;
+      }
+
+      if (slTpMode === 'pips' && entry && !isNaN(rawTp)) {
+        tpPips = rawTp;
+        tpPrice = dir === 'BUY' ? entry + rawTp * pipSize : entry - rawTp * pipSize;
+      } else if (slTpMode === 'price' && entry && !isNaN(rawTp)) {
+        tpPrice = rawTp;
+        tpPips = Math.abs(entry - rawTp) / pipSize;
+      }
+
+      return { slPrice, tpPrice, slPips: slPips !== null ? Math.round(slPips * 10) / 10 : null, tpPips: tpPips !== null ? Math.round(tpPips * 10) / 10 : null };
+    }
+
+    function syncSlTp(field) {
+      // No-op: conversion happens in getSlTpPrices()
+    }
+
     // ── Direction toggle ──
     function setDirection(dir) {
       currentDirection = dir;
@@ -1055,15 +1160,16 @@
       const pair = document.getElementById('input-pair').value;
       const lots = parseFloat(document.getElementById('input-lots').value) || 0;
       const entry = parseFloat(document.getElementById('input-entry').value);
-      const sl = parseFloat(document.getElementById('input-sl').value);
-      const tp = parseFloat(document.getElementById('input-tp').value);
       const autoHedge = document.getElementById('setting-auto-hedge').checked;
       const hedgeDir = autoHedge ? (currentDirection === 'BUY' ? 'SELL' : 'BUY') : currentDirection;
       const multiplier = parseFloat(document.getElementById('setting-multiplier').value) || 1;
       const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
 
-      const rr = calcRiskReward(pair, hedgeLots, entry, sl, tp, hedgeDir);
+      const { slPrice, tpPrice, slPips, tpPips } = getSlTpPrices();
+      const rr = calcRiskReward(pair, hedgeLots, entry, slPrice, tpPrice, hedgeDir);
 
+      document.getElementById('preview-sl-pips').textContent = slPips !== null ? slPips.toFixed(1) + ' pips' : '--';
+      document.getElementById('preview-tp-pips').textContent = tpPips !== null ? tpPips.toFixed(1) + ' pips' : '--';
       document.getElementById('preview-risk').textContent = rr.risk$ > 0 ? '$' + rr.risk$.toFixed(2) : '--';
       document.getElementById('preview-reward').textContent = rr.reward$ > 0 ? '$' + rr.reward$.toFixed(2) : '--';
       document.getElementById('preview-rr').textContent = rr.rr > 0 ? '1:' + rr.rr.toFixed(2) : '--';
@@ -1074,8 +1180,6 @@
       const pair = document.getElementById('input-pair').value;
       const lots = parseFloat(document.getElementById('input-lots').value);
       const entry = document.getElementById('input-entry').value;
-      const sl = document.getElementById('input-sl').value;
-      const tp = document.getElementById('input-tp').value;
       const multiplier = parseFloat(document.getElementById('setting-multiplier').value) || 1.0;
       const autoHedge = document.getElementById('setting-auto-hedge').checked;
       const mirrorSl = document.getElementById('setting-mirror-sl').checked;
@@ -1100,8 +1204,11 @@
       const hedgeDir = autoHedge ? (currentDirection === 'BUY' ? 'SELL' : 'BUY') : currentDirection;
       const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
       const entryNum = parseFloat(entry);
-      const slNum = mirrorSl && sl ? parseFloat(sl) : null;
-      const tpNum = mirrorTp && tp ? parseFloat(tp) : null;
+      const { slPrice, tpPrice, slPips, tpPips } = getSlTpPrices();
+      const slNum = mirrorSl && slPrice !== null ? parseFloat(slPrice.toFixed(5)) : null;
+      const tpNum = mirrorTp && tpPrice !== null ? parseFloat(tpPrice.toFixed(5)) : null;
+      const slPipsVal = mirrorSl && slPips !== null ? slPips : null;
+      const tpPipsVal = mirrorTp && tpPips !== null ? tpPips : null;
 
       const rr = calcRiskReward(pair, hedgeLots, entryNum, slNum, tpNum, hedgeDir);
 
@@ -1116,11 +1223,14 @@
         entry: entryNum,
         sl: slNum,
         tp: tpNum,
+        slPips: slPipsVal,
+        tpPips: tpPipsVal,
         riskAmt: rr.risk$ > 0 ? parseFloat(rr.risk$.toFixed(2)) : null,
         rewardAmt: rr.reward$ > 0 ? parseFloat(rr.reward$.toFixed(2)) : null,
         rrRatio: rr.rr > 0 ? parseFloat(rr.rr.toFixed(2)) : null,
         closePrice: null,
         pnl: null,
+        pnlPips: null,
         status: 'open'
       };
 
@@ -1163,6 +1273,7 @@
       trade.status = 'closed';
 
       const pips = calcPips(trade.pair, trade.entry, closePrice, trade.hedgeDirection);
+      trade.pnlPips = parseFloat(pips.toFixed(1));
       trade.pnl = parseFloat((pips * getPipValue(trade.pair, trade.lots)).toFixed(2));
 
       saveTrades();
@@ -1172,7 +1283,8 @@
       closeModal();
 
       const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
-      showToast(`Trade closed: ${trade.pair} ${pnlStr}`);
+      const pipStr = trade.pnlPips >= 0 ? `+${trade.pnlPips}` : `${trade.pnlPips}`;
+      showToast(`Trade closed: ${trade.pair} ${pipStr} pips (${pnlStr})`);
     }
 
     function deleteTrade(id) {
@@ -1205,10 +1317,13 @@
           <td>${t.entry}</td>
           <td>${t.sl !== null ? t.sl : '--'}</td>
           <td>${t.tp !== null ? t.tp : '--'}</td>
+          <td class="sell-text">${t.slPips !== null ? t.slPips.toFixed(1) : '--'}</td>
+          <td class="buy-text">${t.tpPips !== null ? t.tpPips.toFixed(1) : '--'}</td>
           <td class="sell-text">${t.riskAmt !== null ? '$' + t.riskAmt.toFixed(2) : '--'}</td>
           <td class="buy-text">${t.rewardAmt !== null ? '$' + t.rewardAmt.toFixed(2) : '--'}</td>
           <td>${t.rrRatio !== null ? '1:' + t.rrRatio.toFixed(2) : '--'}</td>
           <td>${t.closePrice !== null ? t.closePrice : '--'}</td>
+          <td class="${t.pnlPips !== null ? (t.pnlPips >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnlPips !== null ? (t.pnlPips >= 0 ? '+' : '') + t.pnlPips.toFixed(1) : '--'}</td>
           <td class="${t.pnl !== null ? (t.pnl >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnl !== null ? (t.pnl >= 0 ? '+' : '') + '$' + Math.abs(t.pnl).toFixed(2) : '--'}</td>
           <td><span class="status-badge ${t.status === 'open' ? 'status-open' : 'status-closed'}">${t.status.toUpperCase()}</span></td>
           <td class="trade-actions">
@@ -1409,11 +1524,12 @@
         showToast('No trades to export.', true);
         return;
       }
-      const headers = ['Time', 'Date', 'Pair', 'Prop Direction', 'Hedge Direction', 'Lots', 'Entry', 'SL', 'TP', 'Risk $', 'Reward $', 'R:R', 'Close Price', 'P/L', 'Status'];
+      const headers = ['Time', 'Date', 'Pair', 'Prop Direction', 'Hedge Direction', 'Lots', 'Entry', 'SL', 'TP', 'SL Pips', 'TP Pips', 'Risk $', 'Reward $', 'R:R', 'Close Price', 'P/L Pips', 'P/L $', 'Status'];
       const rows = trades.map(t => [
         t.time, t.date || '', t.pair, t.propDirection, t.hedgeDirection, t.lots,
-        t.entry, t.sl || '', t.tp || '', t.riskAmt || '', t.rewardAmt || '',
-        t.rrRatio ? '1:' + t.rrRatio : '', t.closePrice || '', t.pnl || '', t.status
+        t.entry, t.sl || '', t.tp || '', t.slPips || '', t.tpPips || '',
+        t.riskAmt || '', t.rewardAmt || '',
+        t.rrRatio ? '1:' + t.rrRatio : '', t.closePrice || '', t.pnlPips || '', t.pnl || '', t.status
       ]);
       const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
