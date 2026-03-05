@@ -1082,8 +1082,9 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Lot Size</label>
-          <input type="number" id="input-lots" value="0.10" min="0.01" step="0.01">
+          <label>Prop Lot Size</label>
+          <input type="number" id="input-lots" value="0.10" min="0.01" step="0.01" oninput="updateRiskPreview()">
+          <span id="hedge-lots-hint" style="font-size:0.68rem; color:var(--text-secondary);"></span>
         </div>
         <div class="form-group">
           <label>Entry Price</label>
@@ -1200,9 +1201,17 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Personal Account Lot Multiplier</label>
-          <input type="number" id="setting-multiplier" value="1.0" min="0.1" step="0.1">
+          <label>Hedge Lot Sizing</label>
+          <select id="setting-lot-mode" onchange="updateHedgeLotInfo(); updateRiskPreview();">
+            <option value="auto">Auto (from simulation)</option>
+            <option value="manual">Manual multiplier</option>
+          </select>
         </div>
+        <div class="form-group" id="manual-multiplier-group" style="display:none;">
+          <label>Manual Lot Multiplier</label>
+          <input type="number" id="setting-multiplier" value="1.0" min="0.1" step="0.1" oninput="updateRiskPreview()">
+        </div>
+        <div id="hedge-lot-info" style="font-size:0.75rem; color:var(--text-secondary); padding:0.4rem 0;"></div>
         <div class="form-group">
           <label>Risk Per Trade (% of account)</label>
           <input type="number" id="setting-risk-pct" value="1.0" min="0.1" step="0.1">
@@ -1447,13 +1456,83 @@
       return val.toFixed(5);
     }
 
+    function getHedgeMultiplier() {
+      const mode = document.getElementById('setting-lot-mode').value;
+      document.getElementById('manual-multiplier-group').style.display = mode === 'manual' ? '' : 'none';
+
+      if (mode === 'manual') {
+        return parseFloat(document.getElementById('setting-multiplier').value) || 1;
+      }
+
+      // Auto mode: calculate from simulation
+      const p = challenge[currentPhase] || {};
+      const balance = p.balance || 0;
+      const profitTargetPct = p.profitTarget || 0;
+      if (balance <= 0 || profitTargetPct <= 0) return 1;
+
+      const propTarget$ = balance * profitTargetPct / 100;
+
+      // Get recover amount for current phase
+      const initialDeposit = parseFloat(document.getElementById('sim-initial-deposit').value) || 0;
+      const p1RecoverInput = document.getElementById('sim-p1-recover-input').value;
+      const fundedRecoverInput = document.getElementById('sim-funded-recover-input').value;
+
+      let recoverAmt;
+      if (currentPhase === 'phase1' || currentPhase === 'phase2') {
+        recoverAmt = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 2;
+      } else {
+        recoverAmt = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit;
+      }
+
+      if (recoverAmt <= 0 || propTarget$ <= 0) return 1;
+
+      // Hedge multiplier = recover amount / prop profit target $
+      // When prop gains $propTarget$, hedge loses $recoverAmt (scaled down)
+      return recoverAmt / propTarget$;
+    }
+
+    function updateHedgeLotInfo() {
+      const mode = document.getElementById('setting-lot-mode').value;
+      const infoEl = document.getElementById('hedge-lot-info');
+      document.getElementById('manual-multiplier-group').style.display = mode === 'manual' ? '' : 'none';
+
+      if (mode === 'manual') {
+        infoEl.textContent = '';
+        return;
+      }
+
+      const multiplier = getHedgeMultiplier();
+      const p = challenge[currentPhase] || {};
+      const balance = p.balance || 0;
+      const profitTargetPct = p.profitTarget || 0;
+      const propTarget$ = balance * profitTargetPct / 100;
+
+      const initialDeposit = parseFloat(document.getElementById('sim-initial-deposit').value) || 0;
+      const p1RecoverInput = document.getElementById('sim-p1-recover-input').value;
+      const fundedRecoverInput = document.getElementById('sim-funded-recover-input').value;
+      let recoverAmt;
+      if (currentPhase === 'phase1' || currentPhase === 'phase2') {
+        recoverAmt = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 2;
+      } else {
+        recoverAmt = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit;
+      }
+
+      if (balance <= 0 || propTarget$ <= 0 || recoverAmt <= 0) {
+        infoEl.innerHTML = 'Auto: Set challenge & simulation details to calculate hedge ratio.';
+        return;
+      }
+
+      const phaseLabel = currentPhase === 'funded' ? 'Funded' : currentPhase === 'phase2' ? 'Phase 2' : 'Phase 1';
+      infoEl.innerHTML = `<strong>Auto (${phaseLabel}):</strong> Recover $${recoverAmt.toFixed(0)} / Prop target $${propTarget$.toFixed(0)} = <strong>${multiplier.toFixed(4)}x</strong> lot ratio`;
+    }
+
     function updateRiskPreview() {
       const pair = document.getElementById('input-pair').value;
       const lots = parseFloat(document.getElementById('input-lots').value) || 0;
       const entry = parseFloat(document.getElementById('input-entry').value);
       const autoHedge = document.getElementById('setting-auto-hedge').checked;
       const hedgeDir = autoHedge ? (currentDirection === 'BUY' ? 'SELL' : 'BUY') : currentDirection;
-      const multiplier = parseFloat(document.getElementById('setting-multiplier').value) || 1;
+      const multiplier = getHedgeMultiplier();
       const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
 
       const { slPrice, tpPrice, slPips, tpPips } = getSlTpPrices();
@@ -1480,6 +1559,14 @@
       document.getElementById('preview-hedge-tp').textContent = mirrorTp && tpPrice !== null ? fmtPrice(tpPrice, pair) + (tpPips !== null ? ' (' + tpPips.toFixed(1) + ' pips)' : '') : '--';
       document.getElementById('preview-hedge-lots').textContent = hedgeLots > 0 ? hedgeLots.toFixed(2) : '--';
 
+      // Update lot size hint
+      const hintEl = document.getElementById('hedge-lots-hint');
+      if (lots > 0 && hedgeLots > 0 && hedgeLots !== lots) {
+        hintEl.textContent = `Hedge: ${hedgeLots.toFixed(2)} lots (${multiplier.toFixed(4)}x)`;
+      } else {
+        hintEl.textContent = '';
+      }
+
       // Summary
       document.getElementById('preview-risk').textContent = rr.risk$ > 0 ? slPips.toFixed(1) + ' pips / $' + rr.risk$.toFixed(2) : '--';
       document.getElementById('preview-reward').textContent = rr.reward$ > 0 ? tpPips.toFixed(1) + ' pips / $' + rr.reward$.toFixed(2) : '--';
@@ -1491,7 +1578,6 @@
       const pair = document.getElementById('input-pair').value;
       const lots = parseFloat(document.getElementById('input-lots').value);
       const entry = document.getElementById('input-entry').value;
-      const multiplier = parseFloat(document.getElementById('setting-multiplier').value) || 1.0;
       const autoHedge = document.getElementById('setting-auto-hedge').checked;
       const mirrorSl = document.getElementById('setting-mirror-sl').checked;
       const mirrorTp = document.getElementById('setting-mirror-tp').checked;
@@ -1506,12 +1592,14 @@
       }
 
       // Check max lot size if set
-      const maxLots = parseFloat(document.getElementById('challenge-max-lots').value) || 0;
+      const p = challenge[currentPhase] || {};
+      const maxLots = p.maxLots || 0;
       if (maxLots > 0 && lots > maxLots) {
         showToast(`Lot size exceeds challenge max of ${maxLots}!`, true);
         return;
       }
 
+      const multiplier = getHedgeMultiplier();
       const hedgeDir = autoHedge ? (currentDirection === 'BUY' ? 'SELL' : 'BUY') : currentDirection;
       const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
       const entryNum = parseFloat(entry);
@@ -1688,6 +1776,7 @@
       loadChallengeFields();
       saveChallenge();
       updateChallenge();
+      updateHedgeLotInfo();
     }
 
     function loadChallengeFields() {
@@ -2128,6 +2217,7 @@
     updateStats();
     updateChallenge();
     updateBankrollSim();
+    updateHedgeLotInfo();
     switchMainTab(currentMainTab);
   </script>
 </body>
