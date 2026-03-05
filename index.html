@@ -1869,6 +1869,12 @@
     }
 
     function setChallengeSteps(steps) {
+      // Save current funded goal under old step count before switching
+      try {
+        const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
+        simData['fundedGoal_' + challengeSteps] = parseFloat(document.getElementById('sim-funded-goal').value) || 0;
+        localStorage.setItem('hedgeSimInputs', JSON.stringify(simData));
+      } catch(e) {}
       challengeSteps = steps;
       localStorage.setItem('hedgeChallengeSteps', steps);
       document.getElementById('challenge-steps').value = steps;
@@ -1930,7 +1936,9 @@
       try {
         const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
         if (simData.initialDeposit) document.getElementById('sim-initial-deposit').value = simData.initialDeposit;
-        if (simData.fundedGoal) document.getElementById('sim-funded-goal').value = simData.fundedGoal;
+        // Funded goal is per step count
+        const goalKey = 'fundedGoal_' + challengeSteps;
+        document.getElementById('sim-funded-goal').value = simData[goalKey] || simData.fundedGoal || '';
         if (simData.refund) document.getElementById('sim-refund').value = simData.refund ? 'yes' : 'no';
       } catch(e) {}
     }
@@ -2158,7 +2166,9 @@
           }
           if (data.simInputs) {
             if (data.simInputs.initialDeposit) document.getElementById('sim-initial-deposit').value = data.simInputs.initialDeposit;
-            if (data.simInputs.fundedGoal) document.getElementById('sim-funded-goal').value = data.simInputs.fundedGoal;
+            const goalKey = 'fundedGoal_' + challengeSteps;
+            const goalVal = data.simInputs[goalKey] || data.simInputs.fundedGoal;
+            if (goalVal) document.getElementById('sim-funded-goal').value = goalVal;
             document.getElementById('sim-refund').value = data.simInputs.refund ? 'yes' : 'no';
             localStorage.setItem('hedgeSimInputs', JSON.stringify(data.simInputs));
           }
@@ -2336,8 +2346,14 @@
         fundedAdditionalDeposit = phaseRecovers[steps - 1]; // auto = last phase recover
       }
 
-      // Save sim inputs
-      const saveData = { initialDeposit, fundedGoal, refund, fundedNetCustom: fundedNetVal, additionalDepositCustom: fundedAdditionalVal };
+      // Save sim inputs (funded goal saved per step count)
+      let saveData;
+      try { saveData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}'); } catch(e) { saveData = {}; }
+      saveData.initialDeposit = initialDeposit;
+      saveData.refund = refund;
+      saveData['fundedGoal_' + steps] = fundedGoal;
+      saveData.fundedNetCustom = fundedNetVal;
+      saveData.additionalDepositCustom = fundedAdditionalVal;
       for (let i = 1; i <= 3; i++) saveData['p' + i + 'NetCustom'] = getInputVal('sim-p' + i + '-net-input');
       for (let i = 2; i <= 3; i++) saveData['p' + i + 'AdditionalDepositCustom'] = getInputVal('sim-p' + i + '-additional-deposit-input');
       localStorage.setItem('hedgeSimInputs', JSON.stringify(saveData));
