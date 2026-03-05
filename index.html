@@ -1057,7 +1057,7 @@
       <div class="card-title"><span class="dot"></span> New Prop Firm Signal</div>
       <div class="form-group">
         <label>Currency Pair</label>
-        <select id="input-pair">
+        <select id="input-pair" onchange="calcPropLots(); updateRiskPreview()">
           <option value="EUR/USD">EUR/USD</option>
           <option value="GBP/USD">GBP/USD</option>
           <option value="USD/JPY">USD/JPY</option>
@@ -1080,15 +1080,19 @@
           <button type="button" id="btn-sell" onclick="setDirection('SELL')">SELL</button>
         </div>
       </div>
-      <div class="form-row">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Risk %</label>
+          <input type="number" id="input-risk-pct" value="1" min="0.1" step="0.1" oninput="calcPropLots(); updateRiskPreview()">
+        </div>
         <div class="form-group">
           <label>Prop Lot Size</label>
-          <input type="number" id="input-lots" value="0.10" min="0.01" step="0.01" oninput="updateRiskPreview()">
+          <input type="number" id="input-lots" value="" min="0.01" step="0.01" oninput="updateRiskPreview()" placeholder="Auto from risk %">
           <span id="hedge-lots-hint" style="font-size:0.68rem; color:var(--text-secondary);"></span>
         </div>
         <div class="form-group">
           <label>Entry Price</label>
-          <input type="number" id="input-entry" step="0.00001" placeholder="e.g. 1.08450">
+          <input type="number" id="input-entry" step="0.00001" placeholder="e.g. 1.08450" oninput="updateRiskPreview()">
         </div>
       </div>
       <div class="form-group">
@@ -1101,7 +1105,7 @@
       <div class="form-row">
         <div class="form-group">
           <label id="label-sl">Stop Loss (price)</label>
-          <input type="number" id="input-sl" step="0.00001" placeholder="Required for risk calc" oninput="syncSlTp('sl'); updateRiskPreview()">
+          <input type="number" id="input-sl" step="0.00001" placeholder="Required for risk calc" oninput="syncSlTp('sl'); calcPropLots(); updateRiskPreview()">
         </div>
         <div class="form-group">
           <label id="label-tp">Take Profit (price)</label>
@@ -1243,7 +1247,8 @@
               <th>Pair</th>
               <th>Prop Dir.</th>
               <th>Hedge Dir.</th>
-              <th>Lots</th>
+              <th>Prop Lots</th>
+              <th>Hedge Lots</th>
               <th>Entry</th>
               <th>SL</th>
               <th>TP</th>
@@ -1526,6 +1531,29 @@
       infoEl.innerHTML = `<strong>Auto (${phaseLabel}):</strong> Recover $${recoverAmt.toFixed(0)} / Prop target $${propTarget$.toFixed(0)} = <strong>${multiplier.toFixed(4)}x</strong> lot ratio`;
     }
 
+    // Auto-calculate prop lot size from risk%, account balance, and SL pips
+    function calcPropLots() {
+      const pair = document.getElementById('input-pair').value;
+      const riskPct = parseFloat(document.getElementById('input-risk-pct').value) || 0;
+      const p = challenge[currentPhase] || {};
+      const balance = p.balance || 0;
+
+      if (balance <= 0 || riskPct <= 0) return;
+
+      const { slPips } = getSlTpPrices();
+      if (slPips === null || slPips <= 0) return;
+
+      // risk$ = balance * riskPct / 100
+      // risk$ = slPips * pipValuePerLot * lots
+      // lots = risk$ / (slPips * pipValuePerLot)
+      const risk$ = balance * riskPct / 100;
+      const pipValuePerLot = getPipValue(pair, 1); // pip value for 1.0 lot
+      const lots = risk$ / (slPips * pipValuePerLot);
+      const rounded = Math.max(0.01, parseFloat(lots.toFixed(2)));
+
+      document.getElementById('input-lots').value = rounded;
+    }
+
     function updateRiskPreview() {
       const pair = document.getElementById('input-pair').value;
       const lots = parseFloat(document.getElementById('input-lots').value) || 0;
@@ -1536,7 +1564,8 @@
       const hedgeLots = parseFloat((lots * multiplier).toFixed(2));
 
       const { slPrice, tpPrice, slPips, tpPips } = getSlTpPrices();
-      const rr = calcRiskReward(pair, hedgeLots, entry, slPrice, tpPrice, hedgeDir);
+      const hedgeRR = calcRiskReward(pair, hedgeLots, entry, slPrice, tpPrice, hedgeDir);
+      const propRR = calcRiskReward(pair, lots, entry, slPrice, tpPrice, currentDirection);
 
       // Prop panel
       const propBadge = document.getElementById('preview-prop-badge');
@@ -1545,7 +1574,10 @@
       document.getElementById('preview-prop-entry').textContent = entry ? fmtPrice(entry, pair) : '--';
       document.getElementById('preview-prop-sl').textContent = slPrice !== null ? fmtPrice(slPrice, pair) + (slPips !== null ? ' (' + slPips.toFixed(1) + ' pips)' : '') : '--';
       document.getElementById('preview-prop-tp').textContent = tpPrice !== null ? fmtPrice(tpPrice, pair) + (tpPips !== null ? ' (' + tpPips.toFixed(1) + ' pips)' : '') : '--';
-      document.getElementById('preview-prop-lots').textContent = lots > 0 ? lots.toFixed(2) : '--';
+      const riskPct = parseFloat(document.getElementById('input-risk-pct').value) || 0;
+      let propLotsText = lots > 0 ? lots.toFixed(2) : '--';
+      if (lots > 0 && propRR.risk$ > 0) propLotsText += ` (risk $${propRR.risk$.toFixed(2)} = ${riskPct}%)`;
+      document.getElementById('preview-prop-lots').textContent = propLotsText;
 
       // Hedge panel
       const hedgeBadge = document.getElementById('preview-hedge-badge');
@@ -1567,10 +1599,10 @@
         hintEl.textContent = '';
       }
 
-      // Summary
-      document.getElementById('preview-risk').textContent = rr.risk$ > 0 ? slPips.toFixed(1) + ' pips / $' + rr.risk$.toFixed(2) : '--';
-      document.getElementById('preview-reward').textContent = rr.reward$ > 0 ? tpPips.toFixed(1) + ' pips / $' + rr.reward$.toFixed(2) : '--';
-      document.getElementById('preview-rr').textContent = rr.rr > 0 ? '1:' + rr.rr.toFixed(2) : '--';
+      // Summary (hedge side)
+      document.getElementById('preview-risk').textContent = hedgeRR.risk$ > 0 ? slPips.toFixed(1) + ' pips / $' + hedgeRR.risk$.toFixed(2) : '--';
+      document.getElementById('preview-reward').textContent = hedgeRR.reward$ > 0 ? tpPips.toFixed(1) + ' pips / $' + hedgeRR.reward$.toFixed(2) : '--';
+      document.getElementById('preview-rr').textContent = hedgeRR.rr > 0 ? '1:' + hedgeRR.rr.toFixed(2) : '--';
     }
 
     // ── Add signal ──
@@ -1618,6 +1650,7 @@
         pair: pair,
         propDirection: currentDirection,
         hedgeDirection: hedgeDir,
+        propLots: lots,
         lots: hedgeLots,
         entry: entryNum,
         sl: slNum,
@@ -1712,6 +1745,7 @@
           <td>${t.pair}</td>
           <td class="direction-cell ${t.propDirection === 'BUY' ? 'buy-text' : 'sell-text'}">${t.propDirection}</td>
           <td class="direction-cell ${t.hedgeDirection === 'BUY' ? 'buy-text' : 'sell-text'}">${t.hedgeDirection}</td>
+          <td>${t.propLots != null ? t.propLots : t.lots}</td>
           <td>${t.lots}</td>
           <td>${t.entry}</td>
           <td>${t.sl !== null ? t.sl : '--'}</td>
@@ -1940,9 +1974,10 @@
         showToast('No trades to export.', true);
         return;
       }
-      const headers = ['Time', 'Date', 'Pair', 'Prop Direction', 'Hedge Direction', 'Lots', 'Entry', 'SL', 'TP', 'SL Pips', 'TP Pips', 'Risk $', 'Reward $', 'R:R', 'Close Price', 'P/L Pips', 'P/L $', 'Status'];
+      const headers = ['Time', 'Date', 'Pair', 'Prop Direction', 'Hedge Direction', 'Prop Lots', 'Hedge Lots', 'Entry', 'SL', 'TP', 'SL Pips', 'TP Pips', 'Risk $', 'Reward $', 'R:R', 'Close Price', 'P/L Pips', 'P/L $', 'Status'];
       const rows = trades.map(t => [
-        t.time, t.date || '', t.pair, t.propDirection, t.hedgeDirection, t.lots,
+        t.time, t.date || '', t.pair, t.propDirection, t.hedgeDirection,
+        t.propLots != null ? t.propLots : t.lots, t.lots,
         t.entry, t.sl || '', t.tp || '', t.slPips || '', t.tpPips || '',
         t.riskAmt || '', t.rewardAmt || '',
         t.rrRatio ? '1:' + t.rrRatio : '', t.closePrice || '', t.pnlPips || '', t.pnl || '', t.status
