@@ -842,6 +842,200 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Trade Copier tab styles */
+    #tab-copier.active {
+      display: block;
+    }
+
+    .copier-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    .copier-grid .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .connection-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      background: var(--bg-secondary);
+    }
+
+    .connection-status .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+    }
+
+    .connection-status.connected .status-dot {
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+    }
+
+    .connection-status.error .status-dot {
+      background: var(--danger);
+      box-shadow: 0 0 6px var(--danger);
+    }
+
+    .copier-trade-preview {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 0.75rem;
+    }
+
+    .copier-trade-preview .preview-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+
+    .copier-preview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .copier-preview-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      padding: 0.25rem 0;
+    }
+
+    .copier-preview-item .label {
+      color: var(--text-secondary);
+    }
+
+    .copier-preview-item .value {
+      font-weight: 600;
+    }
+
+    .copier-exec-log {
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 0.78rem;
+    }
+
+    .copier-exec-log .log-entry {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .copier-exec-log .log-entry:last-child {
+      border-bottom: none;
+    }
+
+    .copier-exec-log .log-time {
+      color: var(--text-secondary);
+      white-space: nowrap;
+      min-width: 70px;
+    }
+
+    .copier-exec-log .log-msg {
+      flex: 1;
+    }
+
+    .copier-exec-log .log-success { color: var(--buy-color); }
+    .copier-exec-log .log-error { color: var(--sell-color); }
+    .copier-exec-log .log-info { color: var(--text-primary); }
+
+    .btn-send-trade {
+      background: var(--accent);
+      color: var(--bg-primary);
+      border: none;
+      padding: 0.85rem 2rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+      margin-top: 1rem;
+    }
+
+    .btn-send-trade:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-send-trade:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-send-trade.sending {
+      position: relative;
+      pointer-events: none;
+    }
+
+    .copier-import-section {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .copier-import-section .import-label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .token-input-group {
+      position: relative;
+    }
+
+    .token-input-group input {
+      padding-right: 2.5rem;
+    }
+
+    .token-toggle {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 0.25rem;
+    }
+
+    .token-toggle:hover {
+      color: var(--text-primary);
+    }
+
+    @media (max-width: 900px) {
+      .copier-grid {
+        grid-template-columns: 1fr;
+      }
+      .copier-preview-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -901,6 +1095,7 @@
   <div class="main-tabs">
     <button class="main-tab active" onclick="switchMainTab('strategy')">Strategy & Simulation</button>
     <button class="main-tab" onclick="switchMainTab('trading')">Trading</button>
+    <button class="main-tab" onclick="switchMainTab('copier')">Trade Copier</button>
   </div>
 
   <main id="tab-strategy" class="tab-content active">
@@ -1316,6 +1511,152 @@
     </div>
   </main>
 
+  <!-- Trade Copier Tab -->
+  <main id="tab-copier" class="tab-content" style="display:none;">
+    <div class="copier-grid">
+      <!-- cTrader Connection Settings -->
+      <div class="card">
+        <div class="card-title">
+          <span class="dot"></span> cTrader API Connection
+          <span class="connection-status" id="ctrader-status">
+            <span class="status-dot"></span>
+            <span id="ctrader-status-text">Disconnected</span>
+          </span>
+        </div>
+        <div class="form-group">
+          <label>cTrader Client ID</label>
+          <input type="text" id="ct-client-id" placeholder="Your cTrader Open API Client ID" oninput="saveCTraderSettings()">
+        </div>
+        <div class="form-group">
+          <label>cTrader Client Secret</label>
+          <div class="token-input-group">
+            <input type="password" id="ct-client-secret" placeholder="Your Client Secret" oninput="saveCTraderSettings()">
+            <button class="token-toggle" onclick="toggleTokenVisibility('ct-client-secret', this)">Show</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Access Token</label>
+          <div class="token-input-group">
+            <input type="password" id="ct-access-token" placeholder="OAuth2 Access Token" oninput="saveCTraderSettings()">
+            <button class="token-toggle" onclick="toggleTokenVisibility('ct-access-token', this)">Show</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Account ID (ctidTraderAccountId)</label>
+          <input type="text" id="ct-account-id" placeholder="e.g. 12345678" oninput="saveCTraderSettings()">
+        </div>
+        <div class="form-group">
+          <label>API Environment</label>
+          <select id="ct-environment" onchange="saveCTraderSettings()">
+            <option value="demo">Demo</option>
+            <option value="live">Live</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="testCTraderConnection()" style="margin-top:0.5rem;">Test Connection</button>
+      </div>
+
+      <!-- Trade Input -->
+      <div class="card">
+        <div class="card-title"><span class="dot"></span> Hedge Trade to Send</div>
+
+        <!-- Import from existing trade -->
+        <div class="copier-import-section">
+          <span class="import-label">Import from last trade signal</span>
+          <button class="btn btn-sm btn-outline" onclick="importLastTrade()">Import</button>
+        </div>
+
+        <div class="form-group">
+          <label>Symbol</label>
+          <select id="ct-pair" onchange="updateCopierPreview()">
+            <option value="EURUSD">EUR/USD</option>
+            <option value="GBPUSD">GBP/USD</option>
+            <option value="USDJPY">USD/JPY</option>
+            <option value="USDCHF">USD/CHF</option>
+            <option value="AUDUSD">AUD/USD</option>
+            <option value="NZDUSD">NZD/USD</option>
+            <option value="USDCAD">USD/CAD</option>
+            <option value="EURGBP">EUR/GBP</option>
+            <option value="EURJPY">EUR/JPY</option>
+            <option value="GBPJPY">GBP/JPY</option>
+            <option value="XAUUSD">XAU/USD (Gold)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Direction (Hedge Side)</label>
+          <div class="direction-toggle">
+            <button type="button" id="ct-btn-buy" onclick="setCopierDirection('BUY')">BUY</button>
+            <button type="button" id="ct-btn-sell" class="active-sell" onclick="setCopierDirection('SELL')">SELL</button>
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Volume (Lots)</label>
+            <input type="number" id="ct-volume" value="" min="0.01" step="0.01" placeholder="e.g. 0.10" oninput="updateCopierPreview()">
+          </div>
+          <div class="form-group">
+            <label>Entry Price</label>
+            <input type="number" id="ct-entry" step="0.00001" placeholder="Market or limit" oninput="updateCopierPreview()">
+          </div>
+          <div class="form-group">
+            <label>Order Type</label>
+            <select id="ct-order-type" onchange="updateCopierPreview()">
+              <option value="MARKET">Market Order</option>
+              <option value="LIMIT">Limit Order</option>
+              <option value="STOP">Stop Order</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Stop Loss (price)</label>
+            <input type="number" id="ct-sl" step="0.00001" placeholder="Optional" oninput="updateCopierPreview()">
+          </div>
+          <div class="form-group">
+            <label>Take Profit (price)</label>
+            <input type="number" id="ct-tp" step="0.00001" placeholder="Optional" oninput="updateCopierPreview()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Comment</label>
+          <input type="text" id="ct-comment" placeholder="e.g. Hedge for prop signal #123" maxlength="50">
+        </div>
+
+        <!-- Trade Preview -->
+        <div class="copier-trade-preview">
+          <div class="preview-title">Order Preview</div>
+          <div class="copier-preview-grid" id="copier-preview-content">
+            <div class="copier-preview-item"><span class="label">Symbol</span><span class="value" id="cp-symbol">--</span></div>
+            <div class="copier-preview-item"><span class="label">Direction</span><span class="value" id="cp-direction">--</span></div>
+            <div class="copier-preview-item"><span class="label">Volume</span><span class="value" id="cp-volume">--</span></div>
+            <div class="copier-preview-item"><span class="label">Order Type</span><span class="value" id="cp-type">--</span></div>
+            <div class="copier-preview-item"><span class="label">Entry</span><span class="value" id="cp-entry">--</span></div>
+            <div class="copier-preview-item"><span class="label">Stop Loss</span><span class="value" id="cp-sl">--</span></div>
+            <div class="copier-preview-item"><span class="label">Take Profit</span><span class="value" id="cp-tp">--</span></div>
+            <div class="copier-preview-item"><span class="label">Account</span><span class="value" id="cp-account">--</span></div>
+          </div>
+        </div>
+
+        <button class="btn-send-trade" id="btn-send-ctrader" onclick="sendToCTrader()" disabled>
+          Send Hedge to cTrader
+        </button>
+      </div>
+
+      <!-- Execution Log -->
+      <div class="card full-width">
+        <div class="card-title">
+          <span class="dot"></span> Execution Log
+          <button class="btn btn-sm btn-outline" onclick="clearCopierLog()" style="margin-left:auto;">Clear</button>
+        </div>
+        <div class="copier-exec-log" id="copier-exec-log">
+          <div class="log-entry">
+            <span class="log-time">--:--</span>
+            <span class="log-msg log-info">No trades sent yet. Configure your cTrader API connection and place a trade above.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
   <!-- Close Trade Modal -->
   <div class="modal-overlay" id="close-modal">
     <div class="modal">
@@ -1348,13 +1689,17 @@
     function switchMainTab(tab) {
       currentMainTab = tab;
       localStorage.setItem('hedgeMainTab', tab);
+      const tabNames = ['strategy', 'trading', 'copier'];
       document.querySelectorAll('.main-tab').forEach((btn, i) => {
-        btn.classList.toggle('active', (i === 0 && tab === 'strategy') || (i === 1 && tab === 'trading'));
+        btn.classList.toggle('active', tabNames[i] === tab);
       });
-      document.getElementById('tab-strategy').style.display = tab === 'strategy' ? '' : 'none';
-      document.getElementById('tab-strategy').classList.toggle('active', tab === 'strategy');
-      document.getElementById('tab-trading').style.display = tab === 'trading' ? '' : 'none';
-      document.getElementById('tab-trading').classList.toggle('active', tab === 'trading');
+      tabNames.forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) {
+          el.style.display = t === tab ? '' : 'none';
+          el.classList.toggle('active', t === tab);
+        }
+      });
     }
 
     // ── Pip / dollar helpers ──
@@ -2498,6 +2843,301 @@
       document.getElementById('sim-net-breakdown').innerHTML = breakdown;
     }
 
+    // ── Trade Copier (cTrader API) ──
+    let copierDirection = 'SELL';
+    let copierLog = JSON.parse(localStorage.getItem('hedgeCopierLog') || '[]');
+
+    function saveCTraderSettings() {
+      const settings = {
+        clientId: document.getElementById('ct-client-id').value,
+        clientSecret: document.getElementById('ct-client-secret').value,
+        accessToken: document.getElementById('ct-access-token').value,
+        accountId: document.getElementById('ct-account-id').value,
+        environment: document.getElementById('ct-environment').value
+      };
+      localStorage.setItem('hedgeCTraderSettings', JSON.stringify(settings));
+      updateCopierPreview();
+      updateSendButtonState();
+    }
+
+    function loadCTraderSettings() {
+      try {
+        const settings = JSON.parse(localStorage.getItem('hedgeCTraderSettings') || '{}');
+        if (settings.clientId) document.getElementById('ct-client-id').value = settings.clientId;
+        if (settings.clientSecret) document.getElementById('ct-client-secret').value = settings.clientSecret;
+        if (settings.accessToken) document.getElementById('ct-access-token').value = settings.accessToken;
+        if (settings.accountId) document.getElementById('ct-account-id').value = settings.accountId;
+        if (settings.environment) document.getElementById('ct-environment').value = settings.environment;
+      } catch (e) {}
+    }
+
+    function toggleTokenVisibility(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = 'Hide';
+      } else {
+        input.type = 'password';
+        btn.textContent = 'Show';
+      }
+    }
+
+    function setCopierDirection(dir) {
+      copierDirection = dir;
+      document.getElementById('ct-btn-buy').className = dir === 'BUY' ? 'active-buy' : '';
+      document.getElementById('ct-btn-sell').className = dir === 'SELL' ? 'active-sell' : '';
+      updateCopierPreview();
+    }
+
+    function getCTraderBaseUrl() {
+      const env = document.getElementById('ct-environment').value;
+      return env === 'live'
+        ? 'https://openapi.ctrader.com'
+        : 'https://demo.ctraderapi.com';
+    }
+
+    function symbolToCTrader(pair) {
+      // Map display pair names to cTrader symbol names
+      return pair.replace('/', '');
+    }
+
+    function importLastTrade() {
+      if (trades.length === 0) {
+        showToast('No trades available to import.', true);
+        return;
+      }
+      const last = trades[0]; // most recent trade
+      const pairMap = {
+        'EUR/USD': 'EURUSD', 'GBP/USD': 'GBPUSD', 'USD/JPY': 'USDJPY',
+        'USD/CHF': 'USDCHF', 'AUD/USD': 'AUDUSD', 'NZD/USD': 'NZDUSD',
+        'USD/CAD': 'USDCAD', 'EUR/GBP': 'EURGBP', 'EUR/JPY': 'EURJPY',
+        'GBP/JPY': 'GBPJPY', 'XAU/USD': 'XAUUSD'
+      };
+
+      const ctSymbol = pairMap[last.pair] || last.pair.replace('/', '');
+      document.getElementById('ct-pair').value = ctSymbol;
+      setCopierDirection(last.hedgeDirection);
+      document.getElementById('ct-volume').value = last.lots;
+      if (last.entry) document.getElementById('ct-entry').value = last.entry;
+      if (last.sl) document.getElementById('ct-sl').value = last.sl;
+      if (last.tp) document.getElementById('ct-tp').value = last.tp;
+      document.getElementById('ct-comment').value = 'Hedge #' + last.id;
+      document.getElementById('ct-order-type').value = 'MARKET';
+
+      updateCopierPreview();
+      showToast('Imported hedge from last trade signal.');
+    }
+
+    function updateCopierPreview() {
+      const symbol = document.getElementById('ct-pair').value;
+      const volume = document.getElementById('ct-volume').value;
+      const entry = document.getElementById('ct-entry').value;
+      const sl = document.getElementById('ct-sl').value;
+      const tp = document.getElementById('ct-tp').value;
+      const orderType = document.getElementById('ct-order-type').value;
+      const accountId = document.getElementById('ct-account-id').value;
+
+      document.getElementById('cp-symbol').textContent = symbol || '--';
+      const dirEl = document.getElementById('cp-direction');
+      dirEl.textContent = copierDirection;
+      dirEl.className = 'value ' + (copierDirection === 'BUY' ? 'buy-text' : 'sell-text');
+      document.getElementById('cp-volume').textContent = volume ? parseFloat(volume).toFixed(2) + ' lots' : '--';
+      document.getElementById('cp-type').textContent = orderType;
+      document.getElementById('cp-entry').textContent = orderType === 'MARKET' ? 'Market Price' : (entry || '--');
+      document.getElementById('cp-sl').textContent = sl || 'None';
+      document.getElementById('cp-tp').textContent = tp || 'None';
+      document.getElementById('cp-account').textContent = accountId || 'Not configured';
+
+      updateSendButtonState();
+    }
+
+    function updateSendButtonState() {
+      const btn = document.getElementById('btn-send-ctrader');
+      const token = document.getElementById('ct-access-token').value;
+      const accountId = document.getElementById('ct-account-id').value;
+      const volume = document.getElementById('ct-volume').value;
+      const orderType = document.getElementById('ct-order-type').value;
+      const entry = document.getElementById('ct-entry').value;
+
+      const hasCredentials = token && accountId;
+      const hasVolume = volume && parseFloat(volume) > 0;
+      const hasEntry = orderType === 'MARKET' || (entry && parseFloat(entry) > 0);
+
+      btn.disabled = !(hasCredentials && hasVolume && hasEntry);
+    }
+
+    function addCopierLog(msg, type) {
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      copierLog.unshift({ time, msg, type });
+      if (copierLog.length > 50) copierLog = copierLog.slice(0, 50);
+      localStorage.setItem('hedgeCopierLog', JSON.stringify(copierLog));
+      renderCopierLog();
+    }
+
+    function renderCopierLog() {
+      const container = document.getElementById('copier-exec-log');
+      if (copierLog.length === 0) {
+        container.innerHTML = '<div class="log-entry"><span class="log-time">--:--</span><span class="log-msg log-info">No trades sent yet.</span></div>';
+        return;
+      }
+      container.innerHTML = copierLog.map(l =>
+        `<div class="log-entry">
+          <span class="log-time">${l.time}</span>
+          <span class="log-msg log-${l.type}">${l.msg}</span>
+        </div>`
+      ).join('');
+    }
+
+    function clearCopierLog() {
+      copierLog = [];
+      localStorage.setItem('hedgeCopierLog', JSON.stringify(copierLog));
+      renderCopierLog();
+    }
+
+    function setCTraderStatus(status, text) {
+      const el = document.getElementById('ctrader-status');
+      const textEl = document.getElementById('ctrader-status-text');
+      el.className = 'connection-status ' + status;
+      textEl.textContent = text;
+    }
+
+    async function testCTraderConnection() {
+      const accessToken = document.getElementById('ct-access-token').value;
+      const accountId = document.getElementById('ct-account-id').value;
+
+      if (!accessToken || !accountId) {
+        showToast('Please enter Access Token and Account ID.', true);
+        return;
+      }
+
+      setCTraderStatus('', 'Testing...');
+      addCopierLog('Testing cTrader API connection...', 'info');
+
+      try {
+        const baseUrl = getCTraderBaseUrl();
+        const response = await fetch(`${baseUrl}/v2/webserv/traders/${accountId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const balance = data.balance != null ? '$' + (data.balance / 100).toFixed(2) : 'N/A';
+          setCTraderStatus('connected', 'Connected');
+          addCopierLog(`Connected! Account: ${accountId}, Balance: ${balance}`, 'success');
+          showToast('cTrader connection successful!');
+        } else if (response.status === 401) {
+          setCTraderStatus('error', 'Auth Failed');
+          addCopierLog('Authentication failed. Check your access token.', 'error');
+          showToast('Authentication failed. Check your access token.', true);
+        } else {
+          const errText = await response.text();
+          setCTraderStatus('error', 'Error');
+          addCopierLog(`Connection failed (HTTP ${response.status}): ${errText}`, 'error');
+          showToast('Connection failed: ' + response.status, true);
+        }
+      } catch (err) {
+        setCTraderStatus('error', 'Error');
+        addCopierLog(`Connection error: ${err.message}. Check CORS settings or use a proxy.`, 'error');
+        showToast('Connection error: ' + err.message, true);
+      }
+    }
+
+    async function sendToCTrader() {
+      const btn = document.getElementById('btn-send-ctrader');
+      const accessToken = document.getElementById('ct-access-token').value;
+      const accountId = document.getElementById('ct-account-id').value;
+      const symbol = document.getElementById('ct-pair').value;
+      const volume = parseFloat(document.getElementById('ct-volume').value);
+      const entry = parseFloat(document.getElementById('ct-entry').value);
+      const sl = parseFloat(document.getElementById('ct-sl').value);
+      const tp = parseFloat(document.getElementById('ct-tp').value);
+      const orderType = document.getElementById('ct-order-type').value;
+      const comment = document.getElementById('ct-comment').value;
+
+      if (!accessToken || !accountId) {
+        showToast('Configure cTrader API credentials first.', true);
+        return;
+      }
+
+      // Confirm before sending
+      const confirmMsg = `Send ${copierDirection} ${volume} lots ${symbol} (${orderType}) to cTrader?`;
+      if (!confirm(confirmMsg)) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      btn.classList.add('sending');
+      addCopierLog(`Sending ${copierDirection} ${volume} lots ${symbol} (${orderType})...`, 'info');
+
+      try {
+        const baseUrl = getCTraderBaseUrl();
+        // Convert lots to volume in units (cTrader uses volume in cents: 1 lot = 100000 units = 10000000 in volume)
+        const volumeUnits = Math.round(volume * 10000000);
+
+        // Build the order payload
+        const orderPayload = {
+          symbolName: symbol,
+          orderType: orderType,
+          tradeSide: copierDirection === 'BUY' ? 'BUY' : 'SELL',
+          volume: volumeUnits,
+          comment: comment || 'Hedge Copier'
+        };
+
+        // Add price for non-market orders
+        if (orderType !== 'MARKET' && entry) {
+          orderPayload.limitPrice = entry;
+          if (orderType === 'STOP') {
+            orderPayload.stopPrice = entry;
+            delete orderPayload.limitPrice;
+          }
+        }
+
+        // Add SL/TP if provided
+        if (!isNaN(sl) && sl > 0) {
+          orderPayload.stopLoss = sl;
+        }
+        if (!isNaN(tp) && tp > 0) {
+          orderPayload.takeProfit = tp;
+        }
+
+        const response = await fetch(`${baseUrl}/v2/webserv/traders/${accountId}/orders`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(orderPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const orderId = data.orderId || data.positionId || 'N/A';
+          setCTraderStatus('connected', 'Connected');
+          addCopierLog(`Order executed! ${copierDirection} ${volume} lots ${symbol}. Order ID: ${orderId}`, 'success');
+          showToast(`Trade sent successfully! Order: ${orderId}`);
+        } else if (response.status === 401) {
+          setCTraderStatus('error', 'Auth Failed');
+          addCopierLog('Order rejected: Authentication failed. Refresh your access token.', 'error');
+          showToast('Auth failed. Refresh your access token.', true);
+        } else {
+          const errData = await response.text();
+          addCopierLog(`Order rejected (HTTP ${response.status}): ${errData}`, 'error');
+          showToast('Order rejected: ' + response.status, true);
+        }
+      } catch (err) {
+        addCopierLog(`Send error: ${err.message}. If CORS blocked, use a server-side proxy.`, 'error');
+        showToast('Send error: ' + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Hedge to cTrader';
+        btn.classList.remove('sending');
+        updateSendButtonState();
+      }
+    }
+
     // ── Initialize ──
     document.getElementById('challenge-steps').value = challengeSteps;
     buildPhaseTabs();
@@ -2507,6 +3147,9 @@
     updateChallenge();
     updateBankrollSim();
     updateHedgeLotInfo();
+    loadCTraderSettings();
+    renderCopierLog();
+    updateCopierPreview();
     switchMainTab(currentMainTab);
   </script>
 </body>
