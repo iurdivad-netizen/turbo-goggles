@@ -1412,13 +1412,26 @@
         </div>
       </div>
 
-      <button class="btn btn-primary" style="margin-top:1rem" onclick="addSignal()">Add Signal &amp; Create Hedge</button>
+      <button class="btn btn-primary" id="btn-add-signal" style="margin-top:1rem" onclick="addSignal()">Add Signal &amp; Create Hedge</button>
     </div>
 
     <!-- Settings Card -->
     <div class="card">
       <div class="card-title"><span class="dot"></span> Hedge Settings</div>
       <div class="settings-grid">
+        <div class="setting-row" style="border-bottom:1px solid var(--border); padding-bottom:0.75rem; margin-bottom:0.5rem;">
+          <label style="display:flex; align-items:center; gap:0.5rem;">
+            Auto-send hedge to cTrader
+            <span class="connection-status" id="trading-ctrader-status" style="font-size:0.7rem;">
+              <span class="status-dot"></span>
+              <span id="trading-ctrader-status-text">Not configured</span>
+            </span>
+          </label>
+          <div class="toggle-switch">
+            <input type="checkbox" id="setting-auto-send-ctrader">
+            <span class="toggle-slider" onclick="this.previousElementSibling.click(); onAutoSendToggle()"></span>
+          </div>
+        </div>
         <div class="setting-row">
           <label>Auto-hedge (mirror opposite)</label>
           <div class="toggle-switch">
@@ -2050,6 +2063,11 @@
       updateStats();
       updateChallenge();
       showToast(`Hedge created: ${hedgeDir} ${hedgeLots} lots ${pair} @ ${entry}`);
+
+      // Auto-send hedge to cTrader if enabled
+      if (document.getElementById('setting-auto-send-ctrader').checked) {
+        autoSendHedgeToCTrader(trade);
+      }
 
       document.getElementById('input-entry').value = '';
       document.getElementById('input-sl').value = '';
@@ -3138,6 +3156,102 @@
       }
     }
 
+    // ── Auto-send hedge from Trading tab to cTrader ──
+    async function autoSendHedgeToCTrader(trade) {
+      const accessToken = document.getElementById('ct-access-token').value;
+      const accountId = document.getElementById('ct-account-id').value;
+
+      if (!accessToken || !accountId) {
+        showToast('cTrader not configured. Set up credentials in Trade Copier tab.', true);
+        return;
+      }
+
+      const pairMap = {
+        'EUR/USD': 'EURUSD', 'GBP/USD': 'GBPUSD', 'USD/JPY': 'USDJPY',
+        'USD/CHF': 'USDCHF', 'AUD/USD': 'AUDUSD', 'NZD/USD': 'NZDUSD',
+        'USD/CAD': 'USDCAD', 'EUR/GBP': 'EURGBP', 'EUR/JPY': 'EURJPY',
+        'GBP/JPY': 'GBPJPY', 'XAU/USD': 'XAUUSD'
+      };
+      const symbol = pairMap[trade.pair] || trade.pair.replace('/', '');
+      const volume = trade.lots;
+      const direction = trade.hedgeDirection;
+
+      addCopierLog(`Auto-sending ${direction} ${volume} lots ${symbol} from trade signal...`, 'info');
+
+      try {
+        const baseUrl = getCTraderBaseUrl();
+        const volumeUnits = Math.round(volume * 10000000);
+
+        const orderPayload = {
+          symbolName: symbol,
+          orderType: 'MARKET',
+          tradeSide: direction,
+          volume: volumeUnits,
+          comment: 'Auto-hedge #' + trade.id
+        };
+
+        if (trade.sl != null && trade.sl > 0) orderPayload.stopLoss = trade.sl;
+        if (trade.tp != null && trade.tp > 0) orderPayload.takeProfit = trade.tp;
+
+        const response = await fetch(`${baseUrl}/v2/webserv/traders/${accountId}/orders`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(orderPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const orderId = data.orderId || data.positionId || 'N/A';
+          setCTraderStatus('connected', 'Connected');
+          setTradingCTraderStatus('connected', 'Connected');
+          addCopierLog(`Auto-hedge executed! ${direction} ${volume} lots ${symbol}. Order ID: ${orderId}`, 'success');
+          showToast(`Hedge sent to cTrader! Order: ${orderId}`);
+        } else if (response.status === 401) {
+          setCTraderStatus('error', 'Auth Failed');
+          setTradingCTraderStatus('error', 'Auth Failed');
+          addCopierLog('Auto-hedge rejected: Authentication failed.', 'error');
+          showToast('cTrader auth failed. Refresh your access token.', true);
+        } else {
+          const errData = await response.text();
+          addCopierLog(`Auto-hedge rejected (HTTP ${response.status}): ${errData}`, 'error');
+          showToast('cTrader order rejected: ' + response.status, true);
+        }
+      } catch (err) {
+        addCopierLog(`Auto-hedge error: ${err.message}`, 'error');
+        showToast('cTrader send error: ' + err.message, true);
+      }
+    }
+
+    function onAutoSendToggle() {
+      const checked = document.getElementById('setting-auto-send-ctrader').checked;
+      const btn = document.getElementById('btn-add-signal');
+      if (checked) {
+        const token = document.getElementById('ct-access-token').value;
+        const accountId = document.getElementById('ct-account-id').value;
+        if (!token || !accountId) {
+          showToast('Configure cTrader API credentials in the Trade Copier tab first.', true);
+          document.getElementById('setting-auto-send-ctrader').checked = false;
+          return;
+        }
+        setTradingCTraderStatus('connected', 'Ready');
+        btn.textContent = 'Add Signal & Send Hedge to cTrader';
+        showToast('Auto-send enabled. Hedge orders will be sent to cTrader automatically.');
+      } else {
+        setTradingCTraderStatus('', 'Not configured');
+        btn.textContent = 'Add Signal & Create Hedge';
+      }
+    }
+
+    function setTradingCTraderStatus(status, text) {
+      const el = document.getElementById('trading-ctrader-status');
+      const textEl = document.getElementById('trading-ctrader-status-text');
+      if (el) el.className = 'connection-status ' + status;
+      if (textEl) textEl.textContent = text;
+    }
+
     // ── Initialize ──
     document.getElementById('challenge-steps').value = challengeSteps;
     buildPhaseTabs();
@@ -3150,6 +3264,14 @@
     loadCTraderSettings();
     renderCopierLog();
     updateCopierPreview();
+    // Restore auto-send state
+    (function() {
+      const token = document.getElementById('ct-access-token').value;
+      const accountId = document.getElementById('ct-account-id').value;
+      if (token && accountId) {
+        setTradingCTraderStatus('', 'Ready (toggle to enable)');
+      }
+    })();
     switchMainTab(currentMainTab);
   </script>
 </body>
