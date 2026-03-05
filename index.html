@@ -1050,8 +1050,13 @@
           <input type="text" id="setting-notes" placeholder="e.g. Only hedge during London session">
         </div>
       </div>
-      <div style="margin-top: 1rem; display: flex; gap: 0.75rem;">
+      <div style="margin-top: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
         <button class="btn btn-outline" onclick="exportTrades()">Export CSV</button>
+        <button class="btn btn-outline" onclick="exportAllData()">Export Data (JSON)</button>
+        <label class="btn btn-outline" style="cursor:pointer; margin:0;">
+          Import Data (JSON)
+          <input type="file" accept=".json" onchange="importAllData(event)" style="display:none;">
+        </label>
         <button class="btn btn-outline" onclick="clearAllTrades()">Clear All</button>
       </div>
     </div>
@@ -1670,6 +1675,64 @@
       a.click();
       URL.revokeObjectURL(url);
       showToast('Trades exported successfully.');
+    }
+
+    function exportAllData() {
+      const data = {
+        version: 1,
+        exportDate: new Date().toISOString(),
+        trades: trades,
+        challenge: challenge,
+        settings: {
+          notes: document.getElementById('setting-notes').value || ''
+        }
+      };
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'hedge_data_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('All data exported as JSON.');
+    }
+
+    function importAllData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data.trades || !Array.isArray(data.trades)) {
+            showToast('Invalid data file: no trades array found.', true);
+            return;
+          }
+          if (!confirm(`Import ${data.trades.length} trades and challenge settings? This will replace all current data.`)) {
+            return;
+          }
+          trades = data.trades;
+          saveTrades();
+          if (data.challenge) {
+            Object.assign(challenge, data.challenge);
+            currentPhase = challenge.phase || 'phase1';
+            localStorage.setItem('hedgeChallenge', JSON.stringify(challenge));
+            setPhase(currentPhase);
+          }
+          if (data.settings && data.settings.notes) {
+            document.getElementById('setting-notes').value = data.settings.notes;
+          }
+          renderTrades();
+          updateStats();
+          updateChallenge();
+          showToast(`Imported ${trades.length} trades successfully.`);
+        } catch (err) {
+          showToast('Failed to parse JSON file: ' + err.message, true);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
     }
 
     function clearAllTrades() {
