@@ -845,6 +845,10 @@
       </div>
       <div class="form-row-3">
         <div class="form-group">
+          <label>Challenge Fee ($)</label>
+          <input type="number" id="challenge-fee" step="1" placeholder="e.g. 500" oninput="saveChallenge(); updateChallenge();">
+        </div>
+        <div class="form-group">
           <label>Max Lot Size (0 = unlimited)</label>
           <input type="number" id="challenge-max-lots" step="0.01" placeholder="e.g. 10" oninput="saveChallenge(); updateChallenge();">
         </div>
@@ -852,6 +856,8 @@
           <label>Profit Split (% to you)</label>
           <input type="number" id="challenge-profit-split" step="1" placeholder="e.g. 80" oninput="saveChallenge(); updateChallenge();">
         </div>
+      </div>
+      <div class="form-row">
         <div class="form-group">
           <label>Start Date</label>
           <input type="date" id="challenge-start-date" oninput="saveChallenge(); updateChallenge();">
@@ -922,9 +928,9 @@
 
       <!-- Bankroll Simulation -->
       <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-        <div class="card-title"><span class="dot dot-danger"></span> Hedge Account Bankroll Simulation</div>
+        <div class="card-title"><span class="dot dot-danger"></span> Fee Recovery Hedge Simulation</div>
         <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
-          Estimates the minimum personal account balance needed to sustain the hedge strategy through each challenge phase, based on worst-case drawdown, concurrent margin, and a safety buffer.
+          The hedge only needs to recover the <strong>challenge fee</strong> you paid to enter. If you fail the challenge, the hedge profits cover the fee. If you pass, the hedge loss is offset by your funded account payout. This calculates the personal account bankroll needed to run that hedge.
         </p>
         <div class="form-row-3">
           <div class="form-group">
@@ -942,20 +948,28 @@
         </div>
         <div class="challenge-stats" id="bankroll-sim-grid">
           <div class="challenge-stat-box">
-            <div class="csl">Max Risk per Trade</div>
-            <div class="csv" id="sim-max-risk">--</div>
+            <div class="csl">Challenge Fee</div>
+            <div class="csv" id="sim-fee">--</div>
           </div>
           <div class="challenge-stat-box">
-            <div class="csl">Worst-Case Drawdown</div>
-            <div class="csv" id="sim-worst-dd">--</div>
+            <div class="csl">Hedge Profit Needed</div>
+            <div class="csv" id="sim-profit-needed">--</div>
+          </div>
+          <div class="challenge-stat-box">
+            <div class="csl">Max Hedge Loss (if pass)</div>
+            <div class="csv" id="sim-max-loss">--</div>
           </div>
           <div class="challenge-stat-box">
             <div class="csl">Margin Required</div>
             <div class="csv" id="sim-margin">--</div>
           </div>
           <div class="challenge-stat-box">
-            <div class="csl">Total + Buffer</div>
+            <div class="csl">Min Bankroll + Buffer</div>
             <div class="csv" id="sim-total">--</div>
+          </div>
+          <div class="challenge-stat-box">
+            <div class="csl">Net Outcome (if pass)</div>
+            <div class="csv" id="sim-net-pass">--</div>
           </div>
         </div>
         <div id="sim-phase-summary" style="margin-top: 0.75rem;"></div>
@@ -1594,6 +1608,7 @@
       document.getElementById('challenge-max-dd').value = p.maxDD || '';
       document.getElementById('challenge-min-days').value = p.minDays || '';
       document.getElementById('challenge-time-limit').value = p.timeLimit || '';
+      document.getElementById('challenge-fee').value = p.fee || '';
       document.getElementById('challenge-max-lots').value = p.maxLots || '';
       document.getElementById('challenge-profit-split').value = p.profitSplit || '';
       document.getElementById('challenge-start-date').value = p.startDate || '';
@@ -1608,6 +1623,7 @@
       p.maxDD = parseFloat(document.getElementById('challenge-max-dd').value) || 0;
       p.minDays = parseInt(document.getElementById('challenge-min-days').value) || 0;
       p.timeLimit = parseInt(document.getElementById('challenge-time-limit').value) || 0;
+      p.fee = parseFloat(document.getElementById('challenge-fee').value) || 0;
       p.maxLots = parseFloat(document.getElementById('challenge-max-lots').value) || 0;
       p.profitSplit = parseFloat(document.getElementById('challenge-profit-split').value) || 0;
       p.startDate = document.getElementById('challenge-start-date').value || '';
@@ -1822,95 +1838,133 @@
       }
     }
 
-    // ── Bankroll simulation ──
+    // ── Bankroll simulation (fee recovery hedge) ──
     function updateBankrollSim() {
       const leverage = parseFloat(document.getElementById('sim-leverage').value) || 100;
       const concurrent = parseInt(document.getElementById('sim-concurrent').value) || 2;
       const bufferPct = parseFloat(document.getElementById('sim-buffer').value) || 0;
 
-      // Calculate for each phase
       const phases = ['phase1', 'phase2', 'funded'];
       const phaseLabels = { phase1: 'Phase 1', phase2: 'Phase 2', funded: 'Funded' };
       const phaseResults = [];
 
+      // Total fee across all phases (cumulative cost if you fail and retry)
+      let cumulativeFee = 0;
+
       phases.forEach(phase => {
         const p = challenge[phase] || {};
         const balance = p.balance || 0;
-        const maxDDPct = p.maxDD || 0;
-        const dailyLossPct = p.dailyLoss || 0;
+        const fee = p.fee || 0;
         const profitTargetPct = p.profitTarget || 0;
+        const maxDDPct = p.maxDD || 0;
+        const profitSplit = p.profitSplit || 0;
         const maxLots = p.maxLots || 0;
 
-        if (balance <= 0) {
-          phaseResults.push({ phase, label: phaseLabels[phase], balance: 0, maxRisk: 0, worstDD: 0, margin: 0, total: 0 });
+        cumulativeFee += fee;
+
+        if (fee <= 0 && balance <= 0) {
+          phaseResults.push({ phase, label: phaseLabels[phase], fee: 0, balance: 0, profitNeeded: 0, maxHedgeLoss: 0, margin: 0, total: 0, netIfPass: 0, cumulativeFee });
           return;
         }
 
-        // Max risk per trade: worst case is daily loss limit hit on one trade
-        const maxRiskPerTrade = balance * dailyLossPct / 100;
+        // The hedge needs to PROFIT enough to cover the fee if the challenge fails.
+        // Hedge profit = prop loss (mirrored). If prop hits max DD, hedge gains that $.
+        // So we need: hedge profit on fail >= fee
+        // Hedge profit on fail = prop DD amount = balance * maxDD%
+        const propMaxDD$ = balance * maxDDPct / 100;
+        // profitNeeded = fee (what you need to recover)
+        const profitNeeded = fee;
 
-        // Worst-case drawdown on hedge account:
-        // If prop account hits max DD, hedge account profits that amount.
-        // If prop account hits profit target, hedge account loses that amount.
-        // So worst case for hedge = prop profit target amount (hedge loses the mirror)
-        const worstCaseDD = balance * profitTargetPct / 100;
+        // Worst case for hedge: prop PASSES the challenge (hits profit target).
+        // Hedge loses the mirror of that profit.
+        const propProfitTarget$ = balance * profitTargetPct / 100;
+        const maxHedgeLoss = propProfitTarget$;
 
-        // Margin required for concurrent trades
-        // Assuming average trade ~1 standard lot on major pair = ~$100,000 notional
-        // With leverage, margin = notional / leverage
-        // Use maxLots if set, otherwise estimate from risk
-        const lotsEstimate = maxLots > 0 ? maxLots : Math.max(0.1, maxRiskPerTrade / 100);
-        const notionalPerTrade = lotsEstimate * 100000; // standard lot = 100k
+        // Margin for concurrent hedge positions
+        const lotsEstimate = maxLots > 0 ? maxLots : 0.1;
+        const notionalPerTrade = lotsEstimate * 100000;
         const marginPerTrade = notionalPerTrade / leverage;
         const totalMargin = marginPerTrade * concurrent;
 
-        // Total required = worst case DD + margin for open trades + buffer
-        const subtotal = worstCaseDD + totalMargin;
+        // Bankroll = max hedge loss + margin needed, plus buffer
+        // (need to survive the worst case: prop passes and hedge loses)
+        const subtotal = maxHedgeLoss + totalMargin;
         const total = subtotal * (1 + bufferPct / 100);
 
+        // Net outcome if challenge passes:
+        // You get funded account payout, but hedge loses propProfitTarget$
+        // Funded payout after split = propProfitTarget$ * (profitSplit / 100)
+        // But on Phase 1/2 there's no payout yet, you just advance.
+        // For Phase 1 & 2: net if pass = -maxHedgeLoss (hedge loss) + $0 payout (just advance)
+        // For Funded: net if pass = funded profit * split% - hedge loss
+        let netIfPass;
+        if (phase === 'funded' && profitSplit > 0) {
+          netIfPass = (propProfitTarget$ * profitSplit / 100) - maxHedgeLoss;
+        } else {
+          // Phases 1&2: you don't get paid, but you advance (value = avoided re-paying fees)
+          netIfPass = -maxHedgeLoss;
+        }
+
         phaseResults.push({
-          phase, label: phaseLabels[phase], balance,
-          maxRisk: maxRiskPerTrade, worstDD: worstCaseDD,
-          margin: totalMargin, total
+          phase, label: phaseLabels[phase], fee, balance,
+          profitNeeded, maxHedgeLoss, margin: totalMargin,
+          total, netIfPass, cumulativeFee,
+          propMaxDD$, coverage: propMaxDD$ > 0 ? Math.min(100, (propMaxDD$ / fee) * 100) : 0
         });
       });
 
-      // Update current phase stats
+      // Update current phase stat boxes
       const current = phaseResults.find(r => r.phase === currentPhase) || phaseResults[0];
-      document.getElementById('sim-max-risk').textContent = current.maxRisk > 0 ? '$' + current.maxRisk.toFixed(2) : '--';
-      document.getElementById('sim-worst-dd').textContent = current.worstDD > 0 ? '$' + current.worstDD.toFixed(2) : '--';
+      document.getElementById('sim-fee').textContent = current.fee > 0 ? '$' + current.fee.toFixed(2) : '--';
+      document.getElementById('sim-profit-needed').textContent = current.profitNeeded > 0 ? '$' + current.profitNeeded.toFixed(2) : '--';
+      document.getElementById('sim-max-loss').textContent = current.maxHedgeLoss > 0 ? '$' + current.maxHedgeLoss.toFixed(2) : '--';
       document.getElementById('sim-margin').textContent = current.margin > 0 ? '$' + current.margin.toFixed(2) : '--';
       document.getElementById('sim-total').textContent = current.total > 0 ? '$' + current.total.toFixed(2) : '--';
+      const netEl = document.getElementById('sim-net-pass');
+      if (current.fee > 0 || current.balance > 0) {
+        netEl.textContent = (current.netIfPass >= 0 ? '+' : '-') + '$' + Math.abs(current.netIfPass).toFixed(2);
+        netEl.className = 'csv ' + (current.netIfPass >= 0 ? 'buy-text' : 'sell-text');
+      } else {
+        netEl.textContent = '--';
+        netEl.className = 'csv';
+      }
 
-      // Build phase comparison table
-      const hasData = phaseResults.some(r => r.balance > 0);
+      // Phase comparison table
+      const hasData = phaseResults.some(r => r.fee > 0 || r.balance > 0);
       if (!hasData) {
         document.getElementById('sim-phase-summary').innerHTML = '';
         return;
       }
 
-      const grandTotal = phaseResults.reduce((max, r) => Math.max(max, r.total), 0);
+      const totalFees = phaseResults.reduce((sum, r) => sum + r.fee, 0);
+      const peakBankroll = phaseResults.reduce((max, r) => Math.max(max, r.total), 0);
 
       let html = `<table class="sim-phase-table">
         <thead><tr>
-          <th>Phase</th><th>Prop Balance</th><th>Worst-Case Loss</th><th>Margin Needed</th><th>Required Bankroll</th>
+          <th>Phase</th><th>Fee</th><th>Hedge Profit (if fail)</th><th>Hedge Loss (if pass)</th><th>Bankroll Needed</th><th>Net (if pass)</th>
         </tr></thead><tbody>`;
 
       phaseResults.forEach(r => {
-        if (r.balance <= 0) return;
+        if (r.fee <= 0 && r.balance <= 0) return;
         const activeClass = r.phase === currentPhase ? ' class="phase-active"' : '';
+        const netClass = r.netIfPass >= 0 ? 'buy-text' : 'sell-text';
+        const netSign = r.netIfPass >= 0 ? '+' : '-';
         html += `<tr>
           <td${activeClass}>${r.label}${r.phase === currentPhase ? ' *' : ''}</td>
-          <td>$${r.balance.toLocaleString()}</td>
-          <td class="sell-text">$${r.worstDD.toFixed(2)}</td>
-          <td>$${r.margin.toFixed(2)}</td>
+          <td>$${r.fee.toFixed(0)}</td>
+          <td class="buy-text">${r.propMaxDD$ > 0 ? '+$' + r.propMaxDD$.toFixed(2) : '--'}</td>
+          <td class="sell-text">${r.maxHedgeLoss > 0 ? '-$' + r.maxHedgeLoss.toFixed(2) : '--'}</td>
           <td><strong>$${r.total.toFixed(2)}</strong></td>
+          <td class="${netClass}">${netSign}$${Math.abs(r.netIfPass).toFixed(2)}</td>
         </tr>`;
       });
 
       html += `<tr>
-        <td colspan="4" style="text-align:right; color:var(--text-secondary);">Peak Required Bankroll</td>
-        <td class="buy-text"><strong>$${grandTotal.toFixed(2)}</strong></td>
+        <td style="color:var(--text-secondary);">Totals</td>
+        <td><strong>$${totalFees.toFixed(0)}</strong></td>
+        <td colspan="2" style="text-align:right; color:var(--text-secondary);">Peak Bankroll Required</td>
+        <td class="buy-text"><strong>$${peakBankroll.toFixed(2)}</strong></td>
+        <td></td>
       </tr></tbody></table>`;
 
       document.getElementById('sim-phase-summary').innerHTML = html;
