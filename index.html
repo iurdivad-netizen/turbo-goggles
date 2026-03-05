@@ -660,6 +660,51 @@
     }
 
     /* Phase selector tabs */
+    /* Main tabs */
+    .main-tabs {
+      display: flex;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem 0;
+    }
+
+    .main-tab {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      border: none;
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 700;
+      transition: all 0.2s;
+      text-align: center;
+      border-bottom: 3px solid transparent;
+    }
+
+    .main-tab:first-child { border-radius: 8px 0 0 0; }
+    .main-tab:last-child { border-radius: 0 8px 0 0; }
+
+    .main-tab.active {
+      background: var(--bg-card);
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .main-tab:not(.active):hover {
+      background: var(--bg-card);
+      color: var(--text-primary);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: grid;
+    }
+
     .phase-tabs {
       display: flex;
       gap: 0;
@@ -804,7 +849,12 @@
     </div>
   </header>
 
-  <main>
+  <div class="main-tabs">
+    <button class="main-tab active" onclick="switchMainTab('strategy')">Strategy & Simulation</button>
+    <button class="main-tab" onclick="switchMainTab('trading')">Trading</button>
+  </div>
+
+  <main id="tab-strategy" class="tab-content active">
     <!-- Prop Firm Challenge Card -->
     <div class="card full-width">
       <div class="card-title"><span class="dot dot-warn"></span> Prop Firm Challenge Tracker</div>
@@ -950,6 +1000,23 @@
             </select>
           </div>
         </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Phase 1 Recover Amount ($)</label>
+            <input type="number" id="sim-p1-recover-input" min="0" step="1" placeholder="Auto: Deposit / 2" oninput="updateBankrollSim()">
+            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (Deposit / 2)</span>
+          </div>
+          <div class="form-group">
+            <label>Funded Recover Amount ($)</label>
+            <input type="number" id="sim-funded-recover-input" min="0" step="1" placeholder="Auto: Deposit" oninput="updateBankrollSim()">
+            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (= Deposit)</span>
+          </div>
+          <div class="form-group">
+            <label>Funded Additional Deposit ($)</label>
+            <input type="number" id="sim-additional-deposit-input" min="0" step="1" placeholder="Auto: Deposit + P1 Recover" oninput="updateBankrollSim()">
+            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto</span>
+          </div>
+        </div>
 
         <div class="challenge-stats" id="bankroll-sim-grid">
           <div class="challenge-stat-box">
@@ -982,7 +1049,9 @@
         <div id="sim-net-breakdown" style="margin-top: 0.75rem;"></div>
       </div>
     </div>
+  </main>
 
+  <main id="tab-trading" class="tab-content" style="display:none;">
     <!-- Signal Input Card -->
     <div class="card">
       <div class="card-title"><span class="dot"></span> New Prop Firm Signal</div>
@@ -1217,6 +1286,20 @@
     let currentDirection = 'BUY';
     let closingTradeId = null;
     let currentPhase = challenge.phase || 'phase1';
+    let currentMainTab = localStorage.getItem('hedgeMainTab') || 'strategy';
+
+    // ── Main tab switching ──
+    function switchMainTab(tab) {
+      currentMainTab = tab;
+      localStorage.setItem('hedgeMainTab', tab);
+      document.querySelectorAll('.main-tab').forEach((btn, i) => {
+        btn.classList.toggle('active', (i === 0 && tab === 'strategy') || (i === 1 && tab === 'trading'));
+      });
+      document.getElementById('tab-strategy').style.display = tab === 'strategy' ? '' : 'none';
+      document.getElementById('tab-strategy').classList.toggle('active', tab === 'strategy');
+      document.getElementById('tab-trading').style.display = tab === 'trading' ? '' : 'none';
+      document.getElementById('tab-trading').classList.toggle('active', tab === 'trading');
+    }
 
     // ── Pip / dollar helpers ──
     function getPipSize(pair) {
@@ -1626,6 +1709,9 @@
         if (simData.initialDeposit) document.getElementById('sim-initial-deposit').value = simData.initialDeposit;
         if (simData.fundedGoal) document.getElementById('sim-funded-goal').value = simData.fundedGoal;
         if (simData.refund) document.getElementById('sim-refund').value = simData.refund ? 'yes' : 'no';
+        if (simData.p1RecoverCustom) document.getElementById('sim-p1-recover-input').value = simData.p1RecoverCustom;
+        if (simData.fundedRecoverCustom) document.getElementById('sim-funded-recover-input').value = simData.fundedRecoverCustom;
+        if (simData.additionalDepositCustom) document.getElementById('sim-additional-deposit-input').value = simData.additionalDepositCustom;
       } catch(e) {}
     }
 
@@ -1795,7 +1881,10 @@
         simInputs: {
           initialDeposit: parseFloat(document.getElementById('sim-initial-deposit').value) || 0,
           fundedGoal: parseFloat(document.getElementById('sim-funded-goal').value) || 0,
-          refund: document.getElementById('sim-refund').value === 'yes'
+          refund: document.getElementById('sim-refund').value === 'yes',
+          p1RecoverCustom: document.getElementById('sim-p1-recover-input').value,
+          fundedRecoverCustom: document.getElementById('sim-funded-recover-input').value,
+          additionalDepositCustom: document.getElementById('sim-additional-deposit-input').value
         }
       };
       const json = JSON.stringify(data, null, 2);
@@ -1838,6 +1927,9 @@
             if (data.simInputs.initialDeposit) document.getElementById('sim-initial-deposit').value = data.simInputs.initialDeposit;
             if (data.simInputs.fundedGoal) document.getElementById('sim-funded-goal').value = data.simInputs.fundedGoal;
             document.getElementById('sim-refund').value = data.simInputs.refund ? 'yes' : 'no';
+            if (data.simInputs.p1RecoverCustom) document.getElementById('sim-p1-recover-input').value = data.simInputs.p1RecoverCustom;
+            if (data.simInputs.fundedRecoverCustom) document.getElementById('sim-funded-recover-input').value = data.simInputs.fundedRecoverCustom;
+            if (data.simInputs.additionalDepositCustom) document.getElementById('sim-additional-deposit-input').value = data.simInputs.additionalDepositCustom;
             localStorage.setItem('hedgeSimInputs', JSON.stringify(data.simInputs));
           }
           renderTrades();
@@ -1870,8 +1962,17 @@
       const fundedGoal = parseFloat(document.getElementById('sim-funded-goal').value) || 0;
       const refund = document.getElementById('sim-refund').value === 'yes';
 
+      // Custom recover amounts (blank = auto)
+      const p1RecoverInput = document.getElementById('sim-p1-recover-input').value;
+      const fundedRecoverInput = document.getElementById('sim-funded-recover-input').value;
+      const additionalDepositInput = document.getElementById('sim-additional-deposit-input').value;
+
       // Save sim inputs to localStorage
-      localStorage.setItem('hedgeSimInputs', JSON.stringify({ initialDeposit, fundedGoal, refund }));
+      localStorage.setItem('hedgeSimInputs', JSON.stringify({
+        initialDeposit, fundedGoal, refund,
+        p1RecoverCustom: p1RecoverInput, fundedRecoverCustom: fundedRecoverInput,
+        additionalDepositCustom: additionalDepositInput
+      }));
 
       // Get challenge data
       const p1 = challenge.phase1 || {};
@@ -1881,10 +1982,10 @@
       const profitTargetPct = p1.profitTarget || 0;
       const profitSplit = (pFunded.profitSplit || 80) / 100;
 
-      // Core calculations from spreadsheet model
-      const phase1Recover = initialDeposit / 2;
-      const fundedRecover = initialDeposit;
-      const additionalDeposit = initialDeposit + phase1Recover;
+      // Core calculations - use custom values if provided, else auto
+      const phase1Recover = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 2;
+      const fundedRecover = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit;
+      const additionalDeposit = additionalDepositInput !== '' ? parseFloat(additionalDepositInput) || 0 : initialDeposit + phase1Recover;
       const totalFundsNeeded = initialDeposit + challengeCost + additionalDeposit;
 
       // Funded payout
@@ -2027,6 +2128,7 @@
     updateStats();
     updateChallenge();
     updateBankrollSim();
+    switchMainTab(currentMainTab);
   </script>
 </body>
 </html>
