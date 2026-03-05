@@ -1136,6 +1136,18 @@
               <span class="preview-row-label">Lots</span>
               <span class="preview-row-value" id="preview-prop-lots">--</span>
             </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Risk</span>
+              <span class="preview-row-value sell-text" id="preview-prop-risk">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Reward</span>
+              <span class="preview-row-value buy-text" id="preview-prop-reward">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">R:R</span>
+              <span class="preview-row-value" id="preview-prop-rr">--</span>
+            </div>
           </div>
           <div class="preview-panel">
             <div class="preview-panel-title">
@@ -1158,15 +1170,27 @@
               <span class="preview-row-label">Lots</span>
               <span class="preview-row-value" id="preview-hedge-lots">--</span>
             </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Risk</span>
+              <span class="preview-row-value sell-text" id="preview-hedge-risk">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Reward</span>
+              <span class="preview-row-value buy-text" id="preview-hedge-reward">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">R:R</span>
+              <span class="preview-row-value" id="preview-hedge-rr">--</span>
+            </div>
           </div>
         </div>
         <div class="preview-summary">
           <div class="preview-summary-item">
-            <div class="psl">Risk</div>
+            <div class="psl">Net Risk</div>
             <div class="psv sell-text" id="preview-risk">--</div>
           </div>
           <div class="preview-summary-item">
-            <div class="psl">Reward</div>
+            <div class="psl">Net Reward</div>
             <div class="psv buy-text" id="preview-reward">--</div>
           </div>
           <div class="preview-summary-item">
@@ -1574,22 +1598,27 @@
       document.getElementById('preview-prop-entry').textContent = entry ? fmtPrice(entry, pair) : '--';
       document.getElementById('preview-prop-sl').textContent = slPrice !== null ? fmtPrice(slPrice, pair) + (slPips !== null ? ' (' + slPips.toFixed(1) + ' pips)' : '') : '--';
       document.getElementById('preview-prop-tp').textContent = tpPrice !== null ? fmtPrice(tpPrice, pair) + (tpPips !== null ? ' (' + tpPips.toFixed(1) + ' pips)' : '') : '--';
+      document.getElementById('preview-prop-lots').textContent = lots > 0 ? lots.toFixed(2) : '--';
+      // Prop risk/reward
       const riskPct = parseFloat(document.getElementById('input-risk-pct').value) || 0;
-      let propLotsText = lots > 0 ? lots.toFixed(2) : '--';
-      if (lots > 0 && propRR.risk$ > 0) propLotsText += ` (risk $${propRR.risk$.toFixed(2)} = ${riskPct}%)`;
-      document.getElementById('preview-prop-lots').textContent = propLotsText;
+      document.getElementById('preview-prop-risk').textContent = propRR.risk$ > 0 ? `$${propRR.risk$.toFixed(2)} (${riskPct}%)` : '--';
+      document.getElementById('preview-prop-reward').textContent = propRR.reward$ > 0 ? `$${propRR.reward$.toFixed(2)}` : '--';
+      document.getElementById('preview-prop-rr').textContent = propRR.rr > 0 ? '1:' + propRR.rr.toFixed(2) : '--';
 
       // Hedge panel
       const hedgeBadge = document.getElementById('preview-hedge-badge');
       hedgeBadge.textContent = hedgeDir;
       hedgeBadge.className = 'dir-badge ' + (hedgeDir === 'BUY' ? 'badge-buy' : 'badge-sell');
       document.getElementById('preview-hedge-entry').textContent = entry ? fmtPrice(entry, pair) : '--';
-      // Hedge mirrors SL/TP based on settings
       const mirrorSl = document.getElementById('setting-mirror-sl').checked;
       const mirrorTp = document.getElementById('setting-mirror-tp').checked;
       document.getElementById('preview-hedge-sl').textContent = mirrorSl && slPrice !== null ? fmtPrice(slPrice, pair) + (slPips !== null ? ' (' + slPips.toFixed(1) + ' pips)' : '') : '--';
       document.getElementById('preview-hedge-tp').textContent = mirrorTp && tpPrice !== null ? fmtPrice(tpPrice, pair) + (tpPips !== null ? ' (' + tpPips.toFixed(1) + ' pips)' : '') : '--';
       document.getElementById('preview-hedge-lots').textContent = hedgeLots > 0 ? hedgeLots.toFixed(2) : '--';
+      // Hedge risk/reward
+      document.getElementById('preview-hedge-risk').textContent = hedgeRR.risk$ > 0 ? `$${hedgeRR.risk$.toFixed(2)}` : '--';
+      document.getElementById('preview-hedge-reward').textContent = hedgeRR.reward$ > 0 ? `$${hedgeRR.reward$.toFixed(2)}` : '--';
+      document.getElementById('preview-hedge-rr').textContent = hedgeRR.rr > 0 ? '1:' + hedgeRR.rr.toFixed(2) : '--';
 
       // Update lot size hint
       const hintEl = document.getElementById('hedge-lots-hint');
@@ -1599,10 +1628,12 @@
         hintEl.textContent = '';
       }
 
-      // Summary (hedge side)
-      document.getElementById('preview-risk').textContent = hedgeRR.risk$ > 0 ? slPips.toFixed(1) + ' pips / $' + hedgeRR.risk$.toFixed(2) : '--';
-      document.getElementById('preview-reward').textContent = hedgeRR.reward$ > 0 ? tpPips.toFixed(1) + ' pips / $' + hedgeRR.reward$.toFixed(2) : '--';
-      document.getElementById('preview-rr').textContent = hedgeRR.rr > 0 ? '1:' + hedgeRR.rr.toFixed(2) : '--';
+      // Net summary (prop loss is hedge gain on SL hit, and vice versa)
+      const netRisk = Math.abs(propRR.risk$ - hedgeRR.reward$);
+      const netReward = Math.abs(propRR.reward$ - hedgeRR.risk$);
+      document.getElementById('preview-risk').textContent = propRR.risk$ > 0 && hedgeRR.reward$ > 0 ? `$${netRisk.toFixed(2)}` : '--';
+      document.getElementById('preview-reward').textContent = propRR.reward$ > 0 && hedgeRR.risk$ > 0 ? `$${netReward.toFixed(2)}` : '--';
+      document.getElementById('preview-rr').textContent = netRisk > 0 && netReward > 0 ? '1:' + (netReward / netRisk).toFixed(2) : '--';
     }
 
     // ── Add signal ──
