@@ -1025,12 +1025,11 @@
         BREACH WARNING: You are approaching or have exceeded a challenge limit!
       </div>
 
-      <!-- Bankroll Simulation - 1 Phase Over Hedging Model -->
+      <!-- Bankroll Simulation - Over Hedging Model -->
       <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-        <div class="card-title"><span class="dot dot-danger"></span> 1 Phase Over Hedging Simulation</div>
-        <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+        <div class="card-title"><span class="dot dot-danger"></span> <span id="sim-title">Over Hedging Simulation</span></div>
+        <p id="sim-description" style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
           Hedge only recovers the <strong>challenge fee</strong>. Prop = Master, Real = Slave (mirrored).
-          Phase 1 recover = Initial Deposit / 2. Funded recover = Initial Deposit.
         </p>
         <div class="form-row-3">
           <div class="form-group">
@@ -1049,50 +1048,9 @@
             </select>
           </div>
         </div>
-        <div class="form-row-3">
-          <div class="form-group">
-            <label>Phase 1 Recover Amount ($)</label>
-            <input type="number" id="sim-p1-recover-input" min="0" step="1" placeholder="Auto: Deposit / 2" oninput="updateBankrollSim()">
-            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (Deposit / 2)</span>
-          </div>
-          <div class="form-group">
-            <label>Funded Recover Amount ($)</label>
-            <input type="number" id="sim-funded-recover-input" min="0" step="1" placeholder="Auto: Deposit" oninput="updateBankrollSim()">
-            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (= Deposit)</span>
-          </div>
-          <div class="form-group">
-            <label>Funded Additional Deposit ($)</label>
-            <input type="number" id="sim-additional-deposit-input" min="0" step="1" placeholder="Auto: Deposit + P1 Recover" oninput="updateBankrollSim()">
-            <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto</span>
-          </div>
-        </div>
+        <div id="sim-recover-inputs"></div>
 
-        <div class="challenge-stats" id="bankroll-sim-grid">
-          <div class="challenge-stat-box">
-            <div class="csl">Challenge Cost</div>
-            <div class="csv" id="sim-challenge-cost">--</div>
-          </div>
-          <div class="challenge-stat-box">
-            <div class="csl">Phase 1 Recover</div>
-            <div class="csv" id="sim-p1-recover">--</div>
-          </div>
-          <div class="challenge-stat-box">
-            <div class="csl">Funded Recover</div>
-            <div class="csv" id="sim-funded-recover">--</div>
-          </div>
-          <div class="challenge-stat-box">
-            <div class="csl">Funded Additional Deposit</div>
-            <div class="csv" id="sim-additional-deposit">--</div>
-          </div>
-          <div class="challenge-stat-box">
-            <div class="csl">Total Funds Needed</div>
-            <div class="csv" id="sim-total-funds">--</div>
-          </div>
-          <div class="challenge-stat-box">
-            <div class="csl">Net Outcome (all pass)</div>
-            <div class="csv" id="sim-net-pass">--</div>
-          </div>
-        </div>
+        <div class="challenge-stats" id="bankroll-sim-grid"></div>
 
         <div id="sim-scenario-table" style="margin-top: 0.75rem;"></div>
         <div id="sim-net-breakdown" style="margin-top: 0.75rem;"></div>
@@ -1550,22 +1508,10 @@
 
       const propTarget$ = balance * profitTargetPct / 100;
 
-      // Get recover amount for current phase
-      const initialDeposit = parseFloat(document.getElementById('sim-initial-deposit').value) || 0;
-      const p1RecoverInput = document.getElementById('sim-p1-recover-input').value;
-      const fundedRecoverInput = document.getElementById('sim-funded-recover-input').value;
-
-      let recoverAmt;
-      if (currentPhase === 'phase1' || currentPhase === 'phase2') {
-        recoverAmt = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 2;
-      } else {
-        recoverAmt = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit;
-      }
+      const recoverAmt = getPhaseRecoverAmt(currentPhase);
 
       if (recoverAmt <= 0 || propTarget$ <= 0) return 1;
 
-      // Hedge multiplier = recover amount / prop profit target $
-      // When prop gains $propTarget$, hedge loses $recoverAmt (scaled down)
       return recoverAmt / propTarget$;
     }
 
@@ -1586,14 +1532,7 @@
       const propTarget$ = balance * profitTargetPct / 100;
 
       const initialDeposit = parseFloat(document.getElementById('sim-initial-deposit').value) || 0;
-      const p1RecoverInput = document.getElementById('sim-p1-recover-input').value;
-      const fundedRecoverInput = document.getElementById('sim-funded-recover-input').value;
-      let recoverAmt;
-      if (currentPhase === 'phase1' || currentPhase === 'phase2') {
-        recoverAmt = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 2;
-      } else {
-        recoverAmt = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit;
-      }
+      const recoverAmt = getPhaseRecoverAmt(currentPhase);
 
       if (balance <= 0 || propTarget$ <= 0 || recoverAmt <= 0) {
         infoEl.innerHTML = 'Auto: Set challenge & simulation details to calculate hedge ratio.';
@@ -1912,6 +1851,7 @@
       saveChallenge();
       updateChallenge();
       updateHedgeLotInfo();
+      updateBankrollSim();
     }
 
     function loadChallengeFields() {
@@ -1927,15 +1867,12 @@
       document.getElementById('challenge-profit-split').value = p.profitSplit || '';
       document.getElementById('challenge-start-date').value = p.startDate || '';
 
-      // Load sim inputs
+      // Load sim inputs (static ones only; dynamic inputs are restored by updateBankrollSim)
       try {
         const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
         if (simData.initialDeposit) document.getElementById('sim-initial-deposit').value = simData.initialDeposit;
         if (simData.fundedGoal) document.getElementById('sim-funded-goal').value = simData.fundedGoal;
         if (simData.refund) document.getElementById('sim-refund').value = simData.refund ? 'yes' : 'no';
-        if (simData.p1RecoverCustom) document.getElementById('sim-p1-recover-input').value = simData.p1RecoverCustom;
-        if (simData.fundedRecoverCustom) document.getElementById('sim-funded-recover-input').value = simData.fundedRecoverCustom;
-        if (simData.additionalDepositCustom) document.getElementById('sim-additional-deposit-input').value = simData.additionalDepositCustom;
       } catch(e) {}
     }
 
@@ -1954,6 +1891,7 @@
       p.startDate = document.getElementById('challenge-start-date').value || '';
       challenge.phase = currentPhase;
       localStorage.setItem('hedgeChallenge', JSON.stringify(challenge));
+      updateBankrollSim();
     }
 
     function updateChallenge() {
@@ -2103,14 +2041,7 @@
         settings: {
           notes: document.getElementById('setting-notes').value || ''
         },
-        simInputs: {
-          initialDeposit: parseFloat(document.getElementById('sim-initial-deposit').value) || 0,
-          fundedGoal: parseFloat(document.getElementById('sim-funded-goal').value) || 0,
-          refund: document.getElementById('sim-refund').value === 'yes',
-          p1RecoverCustom: document.getElementById('sim-p1-recover-input').value,
-          fundedRecoverCustom: document.getElementById('sim-funded-recover-input').value,
-          additionalDepositCustom: document.getElementById('sim-additional-deposit-input').value
-        }
+        simInputs: JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}')
       };
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -2152,14 +2083,12 @@
             if (data.simInputs.initialDeposit) document.getElementById('sim-initial-deposit').value = data.simInputs.initialDeposit;
             if (data.simInputs.fundedGoal) document.getElementById('sim-funded-goal').value = data.simInputs.fundedGoal;
             document.getElementById('sim-refund').value = data.simInputs.refund ? 'yes' : 'no';
-            if (data.simInputs.p1RecoverCustom) document.getElementById('sim-p1-recover-input').value = data.simInputs.p1RecoverCustom;
-            if (data.simInputs.fundedRecoverCustom) document.getElementById('sim-funded-recover-input').value = data.simInputs.fundedRecoverCustom;
-            if (data.simInputs.additionalDepositCustom) document.getElementById('sim-additional-deposit-input').value = data.simInputs.additionalDepositCustom;
             localStorage.setItem('hedgeSimInputs', JSON.stringify(data.simInputs));
           }
           renderTrades();
           updateStats();
           updateChallenge();
+          updateBankrollSim();
           showToast(`Imported ${trades.length} trades successfully.`);
         } catch (err) {
           showToast('Failed to parse JSON file: ' + err.message, true);
@@ -2181,58 +2110,179 @@
       }
     }
 
-    // ── Bankroll simulation (1 Phase Over Hedging model) ──
+    // ── Bankroll simulation (dynamic phase model) ──
+    function getPhaseRecoverAmt(phase) {
+      const initialDeposit = parseFloat(document.getElementById('sim-initial-deposit').value) || 0;
+      const phaseCount = getSimPhaseCount();
+      const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+
+      if (phase === 'phase1') {
+        const v = getVal('sim-p1-recover-input');
+        return v !== '' ? parseFloat(v) || 0 : (phaseCount === 2 ? initialDeposit / 3 : initialDeposit / 2);
+      } else if (phase === 'phase2') {
+        const v = getVal('sim-p2-recover-input');
+        return v !== '' ? parseFloat(v) || 0 : initialDeposit / 3;
+      } else {
+        const v = getVal('sim-funded-recover-input');
+        return v !== '' ? parseFloat(v) || 0 : (phaseCount === 2 ? initialDeposit / 3 : initialDeposit);
+      }
+    }
+
+    function getSimPhaseCount() {
+      const p2 = challenge.phase2 || {};
+      // If phase2 has balance or profitTarget set, it's a 2-phase challenge
+      return (p2.balance > 0 || p2.profitTarget > 0) ? 2 : 1;
+    }
+
     function updateBankrollSim() {
+      const phaseCount = getSimPhaseCount();
       const initialDeposit = parseFloat(document.getElementById('sim-initial-deposit').value) || 0;
       const fundedGoal = parseFloat(document.getElementById('sim-funded-goal').value) || 0;
       const refund = document.getElementById('sim-refund').value === 'yes';
 
-      // Custom recover amounts (blank = auto)
-      const p1RecoverInput = document.getElementById('sim-p1-recover-input').value;
-      const fundedRecoverInput = document.getElementById('sim-funded-recover-input').value;
-      const additionalDepositInput = document.getElementById('sim-additional-deposit-input').value;
+      // Update title and description
+      document.getElementById('sim-title').textContent = phaseCount === 2
+        ? '2 Phase Over Hedging Simulation'
+        : '1 Phase Over Hedging Simulation';
+      document.getElementById('sim-description').innerHTML = phaseCount === 2
+        ? 'Hedge only recovers the <strong>challenge fee</strong>. Prop = Master, Real = Slave (mirrored). Covers Phase 1 → Phase 2 → Funded.'
+        : 'Hedge only recovers the <strong>challenge fee</strong>. Prop = Master, Real = Slave (mirrored). Covers Phase 1 → Funded.';
 
-      // Save sim inputs to localStorage
+      // Build dynamic recover inputs
+      const recoverEl = document.getElementById('sim-recover-inputs');
+      if (phaseCount === 2) {
+        recoverEl.innerHTML = `
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Phase 1 Recover Amount ($)</label>
+              <input type="number" id="sim-p1-recover-input" min="0" step="1" placeholder="Auto: Deposit / 3" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (Deposit / 3)</span>
+            </div>
+            <div class="form-group">
+              <label>Phase 2 Recover Amount ($)</label>
+              <input type="number" id="sim-p2-recover-input" min="0" step="1" placeholder="Auto: Deposit / 3" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (Deposit / 3)</span>
+            </div>
+            <div class="form-group">
+              <label>Funded Recover Amount ($)</label>
+              <input type="number" id="sim-funded-recover-input" min="0" step="1" placeholder="Auto: Deposit / 3" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (Deposit / 3)</span>
+            </div>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Phase 2 Additional Deposit ($)</label>
+              <input type="number" id="sim-p2-additional-deposit-input" min="0" step="1" placeholder="Auto: P1 Recover" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto</span>
+            </div>
+            <div class="form-group">
+              <label>Funded Additional Deposit ($)</label>
+              <input type="number" id="sim-additional-deposit-input" min="0" step="1" placeholder="Auto: P2 Recover" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto</span>
+            </div>
+          </div>`;
+      } else {
+        recoverEl.innerHTML = `
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Phase 1 Recover Amount ($)</label>
+              <input type="number" id="sim-p1-recover-input" min="0" step="1" placeholder="Auto: Deposit / 2" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (Deposit / 2)</span>
+            </div>
+            <div class="form-group">
+              <label>Funded Recover Amount ($)</label>
+              <input type="number" id="sim-funded-recover-input" min="0" step="1" placeholder="Auto: Deposit" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto (= Deposit)</span>
+            </div>
+            <div class="form-group">
+              <label>Funded Additional Deposit ($)</label>
+              <input type="number" id="sim-additional-deposit-input" min="0" step="1" placeholder="Auto: Deposit + P1 Recover" oninput="updateBankrollSim()">
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Leave blank for auto</span>
+            </div>
+          </div>`;
+      }
+
+      // Restore saved values into newly created inputs
+      try {
+        const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
+        const setVal = (id, key) => { const el = document.getElementById(id); if (el && simData[key]) el.value = simData[key]; };
+        setVal('sim-p1-recover-input', 'p1RecoverCustom');
+        setVal('sim-p2-recover-input', 'p2RecoverCustom');
+        setVal('sim-funded-recover-input', 'fundedRecoverCustom');
+        setVal('sim-p2-additional-deposit-input', 'p2AdditionalDepositCustom');
+        setVal('sim-additional-deposit-input', 'additionalDepositCustom');
+      } catch(e) {}
+
+      // Read custom values
+      const getInputVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+      const p1RecoverInput = getInputVal('sim-p1-recover-input');
+      const p2RecoverInput = getInputVal('sim-p2-recover-input');
+      const fundedRecoverInput = getInputVal('sim-funded-recover-input');
+      const p2AdditionalInput = getInputVal('sim-p2-additional-deposit-input');
+      const additionalDepositInput = getInputVal('sim-additional-deposit-input');
+
+      // Save sim inputs
       localStorage.setItem('hedgeSimInputs', JSON.stringify({
         initialDeposit, fundedGoal, refund,
-        p1RecoverCustom: p1RecoverInput, fundedRecoverCustom: fundedRecoverInput,
+        p1RecoverCustom: p1RecoverInput,
+        p2RecoverCustom: p2RecoverInput,
+        fundedRecoverCustom: fundedRecoverInput,
+        p2AdditionalDepositCustom: p2AdditionalInput,
         additionalDepositCustom: additionalDepositInput
       }));
 
       // Get challenge data
       const p1 = challenge.phase1 || {};
+      const p2 = challenge.phase2 || {};
       const pFunded = challenge.funded || {};
-      const challengeCost = (p1.fee || 0);
+      const challengeCost = p1.fee || 0;
       const challengeSize = p1.balance || 0;
-      const profitTargetPct = p1.profitTarget || 0;
       const profitSplit = (pFunded.profitSplit || 80) / 100;
 
-      // Core calculations - use custom values if provided, else auto
-      const phase1Recover = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 2;
-      const fundedRecover = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit;
-      const additionalDeposit = additionalDepositInput !== '' ? parseFloat(additionalDepositInput) || 0 : initialDeposit + phase1Recover;
-      const totalFundsNeeded = initialDeposit + challengeCost + additionalDeposit;
+      // Calculate recover amounts based on phase count
+      let phase1Recover, phase2Recover, fundedRecover, additionalDeposit, p2AdditionalDeposit;
 
-      // Funded payout
+      if (phaseCount === 2) {
+        phase1Recover = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 3;
+        phase2Recover = p2RecoverInput !== '' ? parseFloat(p2RecoverInput) || 0 : initialDeposit / 3;
+        fundedRecover = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit / 3;
+        p2AdditionalDeposit = p2AdditionalInput !== '' ? parseFloat(p2AdditionalInput) || 0 : phase1Recover;
+        additionalDeposit = additionalDepositInput !== '' ? parseFloat(additionalDepositInput) || 0 : phase2Recover;
+      } else {
+        phase1Recover = p1RecoverInput !== '' ? parseFloat(p1RecoverInput) || 0 : initialDeposit / 2;
+        phase2Recover = 0;
+        fundedRecover = fundedRecoverInput !== '' ? parseFloat(fundedRecoverInput) || 0 : initialDeposit;
+        p2AdditionalDeposit = 0;
+        additionalDeposit = additionalDepositInput !== '' ? parseFloat(additionalDepositInput) || 0 : initialDeposit + phase1Recover;
+      }
+
+      const totalFundsNeeded = initialDeposit + challengeCost + p2AdditionalDeposit + additionalDeposit;
       const fundedPayout = fundedGoal * profitSplit;
 
-      // Update stat boxes
-      document.getElementById('sim-challenge-cost').textContent = challengeCost > 0 ? '$' + challengeCost.toFixed(2) : '--';
-      document.getElementById('sim-p1-recover').textContent = initialDeposit > 0 ? '$' + phase1Recover.toFixed(2) : '--';
-      document.getElementById('sim-funded-recover').textContent = initialDeposit > 0 ? '$' + fundedRecover.toFixed(2) : '--';
-      document.getElementById('sim-additional-deposit').textContent = additionalDeposit > 0 ? '$' + additionalDeposit.toFixed(2) : '--';
-      document.getElementById('sim-total-funds').textContent = totalFundsNeeded > 0 ? '$' + totalFundsNeeded.toFixed(2) : '--';
+      // Build dynamic stat boxes
+      let statsHtml = `
+        <div class="challenge-stat-box"><div class="csl">Challenge Cost</div><div class="csv" id="sim-challenge-cost">${challengeCost > 0 ? '$' + challengeCost.toFixed(2) : '--'}</div></div>
+        <div class="challenge-stat-box"><div class="csl">Phase 1 Recover</div><div class="csv">${initialDeposit > 0 ? '$' + phase1Recover.toFixed(2) : '--'}</div></div>`;
 
-      // Net if ALL pass: Payout - phase1 hedge loss - funded hedge loss - challenge cost (+ refund if applicable)
-      const netAllPass = fundedPayout - phase1Recover - fundedRecover - challengeCost + (refund ? challengeCost : 0);
-      const netEl = document.getElementById('sim-net-pass');
-      if (initialDeposit > 0 && fundedGoal > 0) {
-        netEl.textContent = (netAllPass >= 0 ? '+' : '-') + '$' + Math.abs(netAllPass).toFixed(2);
-        netEl.className = 'csv ' + (netAllPass >= 0 ? 'buy-text' : 'sell-text');
-      } else {
-        netEl.textContent = '--';
-        netEl.className = 'csv';
+      if (phaseCount === 2) {
+        statsHtml += `<div class="challenge-stat-box"><div class="csl">Phase 2 Recover</div><div class="csv">${initialDeposit > 0 ? '$' + phase2Recover.toFixed(2) : '--'}</div></div>`;
+        statsHtml += `<div class="challenge-stat-box"><div class="csl">P2 Additional Deposit</div><div class="csv">${p2AdditionalDeposit > 0 ? '$' + p2AdditionalDeposit.toFixed(2) : '--'}</div></div>`;
       }
+
+      statsHtml += `
+        <div class="challenge-stat-box"><div class="csl">Funded Recover</div><div class="csv">${initialDeposit > 0 ? '$' + fundedRecover.toFixed(2) : '--'}</div></div>
+        <div class="challenge-stat-box"><div class="csl">Funded Additional Deposit</div><div class="csv">${additionalDeposit > 0 ? '$' + additionalDeposit.toFixed(2) : '--'}</div></div>
+        <div class="challenge-stat-box"><div class="csl">Total Funds Needed</div><div class="csv">${totalFundsNeeded > 0 ? '$' + totalFundsNeeded.toFixed(2) : '--'}</div></div>`;
+
+      // Net if ALL pass
+      const totalHedgeLoss = phase1Recover + phase2Recover + fundedRecover;
+      const netAllPass = fundedPayout - totalHedgeLoss - challengeCost + (refund ? challengeCost : 0);
+
+      const netClass = netAllPass >= 0 ? 'buy-text' : 'sell-text';
+      const netSign = netAllPass >= 0 ? '+' : '-';
+      statsHtml += `<div class="challenge-stat-box"><div class="csl">Net Outcome (all pass)</div><div class="csv ${initialDeposit > 0 && fundedGoal > 0 ? netClass : ''}">${initialDeposit > 0 && fundedGoal > 0 ? netSign + '$' + Math.abs(netAllPass).toFixed(2) : '--'}</div></div>`;
+
+      document.getElementById('bankroll-sim-grid').innerHTML = statsHtml;
 
       if (initialDeposit <= 0) {
         document.getElementById('sim-scenario-table').innerHTML = '';
@@ -2240,53 +2290,96 @@
         return;
       }
 
-      // Build FAIL/PASS scenario table
+      // Build scenario table
       let realBalance = initialDeposit;
       const scenarios = [];
 
-      // Phase 1 FAIL: Prop fails, hedge wins phase1Recover
-      const p1FailBalance = realBalance + phase1Recover;
+      // Phase 1 FAIL
       scenarios.push({
         phase: 'Phase 1', outcome: 'FAIL', outcomeClass: 'sell-text',
         fee: -challengeCost,
         realPL: '+$' + phase1Recover.toFixed(2), realPLClass: 'buy-text',
-        newBalance: p1FailBalance,
-        action: `Withdraw $${phase1Recover.toFixed(0)}, profit $${(phase1Recover - challengeCost).toFixed(0)} & try again`
+        newBalance: realBalance + phase1Recover,
+        action: `Withdraw $${phase1Recover.toFixed(0)}, net $${(phase1Recover - challengeCost).toFixed(0)} & retry`
       });
 
-      // Phase 1 PASS: Prop passes, hedge loses phase1Recover
+      // Phase 1 PASS
       const p1PassBalance = realBalance - phase1Recover;
       scenarios.push({
         phase: 'Phase 1', outcome: 'PASS', outcomeClass: 'buy-text',
         fee: 0,
         realPL: '-$' + phase1Recover.toFixed(2), realPLClass: 'sell-text',
         newBalance: p1PassBalance,
-        action: `Cost you $${(initialDeposit - p1PassBalance).toFixed(0)} to get funded $${challengeSize.toLocaleString()}`
+        action: phaseCount === 2
+          ? `Move to Phase 2. Deposit additional $${p2AdditionalDeposit.toFixed(0)}`
+          : `Move to Funded. Deposit additional $${additionalDeposit.toFixed(0)}`,
+        separator: phaseCount === 2
+          ? `After Phase 1 pass: deposit additional $${p2AdditionalDeposit.toFixed(0)} → Real balance: $${(p1PassBalance + p2AdditionalDeposit).toFixed(2)}`
+          : `After Phase 1 pass: deposit additional $${additionalDeposit.toFixed(0)} → Real balance: $${(p1PassBalance + additionalDeposit).toFixed(2)}`
       });
 
-      // After Phase 1 PASS, deposit additional funds for funded phase
-      const fundedStartBalance = p1PassBalance + additionalDeposit;
+      if (phaseCount === 2) {
+        // Phase 2 scenarios
+        const p2StartBalance = p1PassBalance + p2AdditionalDeposit;
 
-      // Funded FAIL: Prop fails, hedge wins fundedRecover
-      const fundedFailBalance = fundedStartBalance + fundedRecover;
-      const fundedFailNet = fundedRecover - challengeCost;
-      scenarios.push({
-        phase: 'Funded', outcome: 'FAIL', outcomeClass: 'sell-text',
-        fee: -challengeCost,
-        realPL: '+$' + fundedRecover.toFixed(2), realPLClass: 'buy-text',
-        newBalance: fundedFailBalance,
-        action: `Gain net $${fundedFailNet.toFixed(0)}. Rinse and repeat`
-      });
+        // Phase 2 FAIL
+        scenarios.push({
+          phase: 'Phase 2', outcome: 'FAIL', outcomeClass: 'sell-text',
+          fee: -challengeCost,
+          realPL: '+$' + phase2Recover.toFixed(2), realPLClass: 'buy-text',
+          newBalance: p2StartBalance + phase2Recover,
+          action: `Withdraw $${phase2Recover.toFixed(0)}, net $${(phase2Recover - challengeCost).toFixed(0)} & retry`
+        });
 
-      // Funded PASS: Prop passes, hedge loses fundedRecover, but you get payout
-      const fundedPassBalance = fundedStartBalance - fundedRecover;
-      scenarios.push({
-        phase: 'Funded', outcome: 'PASS', outcomeClass: 'buy-text',
-        fee: refund ? 0 : -challengeCost,
-        realPL: '-$' + fundedRecover.toFixed(2), realPLClass: 'sell-text',
-        newBalance: fundedPassBalance,
-        action: `Gain net $${netAllPass.toFixed(0)}. Keep funded account!`
-      });
+        // Phase 2 PASS
+        const p2PassBalance = p2StartBalance - phase2Recover;
+        scenarios.push({
+          phase: 'Phase 2', outcome: 'PASS', outcomeClass: 'buy-text',
+          fee: 0,
+          realPL: '-$' + phase2Recover.toFixed(2), realPLClass: 'sell-text',
+          newBalance: p2PassBalance,
+          action: `Move to Funded. Deposit additional $${additionalDeposit.toFixed(0)}`,
+          separator: `After Phase 2 pass: deposit additional $${additionalDeposit.toFixed(0)} → Real balance: $${(p2PassBalance + additionalDeposit).toFixed(2)}`
+        });
+
+        // Funded scenarios after P1+P2 pass
+        const fundedStartBalance = p2PassBalance + additionalDeposit;
+
+        scenarios.push({
+          phase: 'Funded', outcome: 'FAIL', outcomeClass: 'sell-text',
+          fee: -challengeCost,
+          realPL: '+$' + fundedRecover.toFixed(2), realPLClass: 'buy-text',
+          newBalance: fundedStartBalance + fundedRecover,
+          action: `Gain net $${(fundedRecover - challengeCost).toFixed(0)}. Rinse and repeat`
+        });
+
+        scenarios.push({
+          phase: 'Funded', outcome: 'PASS', outcomeClass: 'buy-text',
+          fee: refund ? 0 : -challengeCost,
+          realPL: '-$' + fundedRecover.toFixed(2), realPLClass: 'sell-text',
+          newBalance: fundedStartBalance - fundedRecover,
+          action: `Gain net $${netAllPass.toFixed(0)}. Keep funded account!`
+        });
+      } else {
+        // 1 Phase: Funded scenarios after P1 pass
+        const fundedStartBalance = p1PassBalance + additionalDeposit;
+
+        scenarios.push({
+          phase: 'Funded', outcome: 'FAIL', outcomeClass: 'sell-text',
+          fee: -challengeCost,
+          realPL: '+$' + fundedRecover.toFixed(2), realPLClass: 'buy-text',
+          newBalance: fundedStartBalance + fundedRecover,
+          action: `Gain net $${(fundedRecover - challengeCost).toFixed(0)}. Rinse and repeat`
+        });
+
+        scenarios.push({
+          phase: 'Funded', outcome: 'PASS', outcomeClass: 'buy-text',
+          fee: refund ? 0 : -challengeCost,
+          realPL: '-$' + fundedRecover.toFixed(2), realPLClass: 'sell-text',
+          newBalance: fundedStartBalance - fundedRecover,
+          action: `Gain net $${netAllPass.toFixed(0)}. Keep funded account!`
+        });
+      }
 
       // Render scenario table
       let html = `<table class="sim-phase-table">
@@ -2294,11 +2387,10 @@
           <th>Phase</th><th>Outcome</th><th>Fee</th><th>Real Account P/L</th><th>Real Balance</th><th>Action</th>
         </tr></thead><tbody>`;
 
-      scenarios.forEach((s, i) => {
-        // Add separator row before funded scenarios
-        if (i === 2) {
+      scenarios.forEach((s) => {
+        if (s.separator) {
           html += `<tr><td colspan="6" style="padding:0.3rem 0.6rem; font-size:0.72rem; color:var(--text-secondary); border-bottom:1px solid var(--border);">
-            After Phase 1 pass: deposit additional $${additionalDeposit.toFixed(0)} &rarr; Real balance: $${fundedStartBalance.toFixed(2)}
+            ${s.separator}
           </td></tr>`;
         }
         html += `<tr>
@@ -2314,14 +2406,22 @@
       html += `</tbody></table>`;
       document.getElementById('sim-scenario-table').innerHTML = html;
 
-      // Net breakdown (if all pass)
+      // Net breakdown
       let breakdown = `<div style="background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">
         <div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Net Breakdown (if all phases pass)</div>
         <div style="display:grid; grid-template-columns:1fr auto; gap:0.25rem 1rem;">
           <span>Funded Payout (${(profitSplit*100).toFixed(0)}% of $${fundedGoal.toFixed(0)})</span>
           <span class="buy-text" style="text-align:right;">+$${fundedPayout.toFixed(2)}</span>
           <span>Phase 1 hedge loss</span>
-          <span class="sell-text" style="text-align:right;">-$${phase1Recover.toFixed(2)}</span>
+          <span class="sell-text" style="text-align:right;">-$${phase1Recover.toFixed(2)}</span>`;
+
+      if (phaseCount === 2) {
+        breakdown += `
+          <span>Phase 2 hedge loss</span>
+          <span class="sell-text" style="text-align:right;">-$${phase2Recover.toFixed(2)}</span>`;
+      }
+
+      breakdown += `
           <span>Funded hedge loss</span>
           <span class="sell-text" style="text-align:right;">-$${fundedRecover.toFixed(2)}</span>
           <span>Challenge cost</span>
@@ -2333,14 +2433,12 @@
           <span class="buy-text" style="text-align:right;">+$${challengeCost.toFixed(2)}</span>`;
       }
 
-      const netClass = netAllPass >= 0 ? 'buy-text' : 'sell-text';
-      const netSign = netAllPass >= 0 ? '+' : '-';
       breakdown += `
           <span style="border-top:1px solid var(--border); padding-top:0.4rem; font-weight:700;">NET</span>
           <span class="${netClass}" style="border-top:1px solid var(--border); padding-top:0.4rem; font-weight:700; text-align:right;">${netSign}$${Math.abs(netAllPass).toFixed(2)}</span>
         </div>
         <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-secondary);">
-          Total funds needed: $${totalFundsNeeded.toFixed(2)} (Initial $${initialDeposit.toFixed(0)} + Fee $${challengeCost.toFixed(0)} + Additional $${additionalDeposit.toFixed(0)})
+          Total funds needed: $${totalFundsNeeded.toFixed(2)} (Initial $${initialDeposit.toFixed(0)} + Fee $${challengeCost.toFixed(0)}${phaseCount === 2 ? ' + P2 Deposit $' + p2AdditionalDeposit.toFixed(0) : ''} + Funded Deposit $${additionalDeposit.toFixed(0)})
         </div>
       </div>`;
 
