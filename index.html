@@ -2631,15 +2631,25 @@
     // ── Bankroll simulation (dynamic phase model) ──
     function getPhaseRecoverAmt(phase) {
       const challengeCost = (challenge.phase1 || {}).fee || 0;
-      const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+      const steps = getSimPhaseCount();
+      const getVal = (id) => { const el = document.getElementById(id); return el ? parseFloat(el.value) || 0 : 0; };
 
-      if (phase === 'funded') {
-        const v = getVal('sim-funded-net-input');
-        return (v !== '' ? parseFloat(v) || 0 : 0) + challengeCost;
+      // Build cumulative recovers: each phase must cover fee + desired net + all prior hedge losses
+      let cumLoss = 0;
+      for (let i = 1; i <= steps; i++) {
+        const net = getVal('sim-p' + i + '-net-input');
+        const recover = net + challengeCost + cumLoss;
+        if ('phase' + i === phase) return recover;
+        cumLoss += recover; // if this phase passed, hedge lost this amount
       }
-      const num = parseInt(phase.replace('phase', ''));
-      const v = getVal('sim-p' + num + '-net-input');
-      return (v !== '' ? parseFloat(v) || 0 : 0) + challengeCost;
+
+      // Funded phase
+      if (phase === 'funded') {
+        const net = getVal('sim-funded-net-input');
+        return net + challengeCost + cumLoss;
+      }
+
+      return challengeCost;
     }
 
     function getSimPhaseCount() {
@@ -2658,7 +2668,7 @@
       phasePath.push('Funded');
       document.getElementById('sim-title').textContent = stepLabel + ' Over Hedging Simulation';
       document.getElementById('sim-description').innerHTML =
-        `Hedge only recovers the <strong>challenge fee</strong>. Prop = Master, Real = Slave (mirrored). Covers ${phasePath.join(' → ')}.`;
+        `Hedge recovers <strong>fee + prior hedge losses</strong> cumulatively. Prop = Master, Real = Slave (mirrored). Covers ${phasePath.join(' → ')}.`;
 
       // Build dynamic inputs - only rebuild DOM when step count changes
       const recoverEl = document.getElementById('sim-recover-inputs');
@@ -2672,14 +2682,14 @@
             <div class="form-group">
               <label>${label} Desired Net on Fail ($)</label>
               <input type="number" id="sim-p${i}-net-input" min="0" step="1" placeholder="0" oninput="updateBankrollSim()">
-              <span style="font-size:0.68rem; color:var(--text-secondary);">Net profit when this phase fails (recover = net + fee)</span>
+              <span style="font-size:0.68rem; color:var(--text-secondary);">Net profit when this phase fails (recover = net + fee + prior losses)</span>
             </div>`;
         }
         recoverHtml += `
           <div class="form-group">
             <label>Funded Desired Net on Fail ($)</label>
             <input type="number" id="sim-funded-net-input" min="0" step="1" placeholder="0" oninput="updateBankrollSim()">
-            <span style="font-size:0.68rem; color:var(--text-secondary);">Net profit when funded fails (recover = net + fee)</span>
+            <span style="font-size:0.68rem; color:var(--text-secondary);">Net profit when funded fails (recover = net + fee + prior losses)</span>
           </div>
         </div>`;
         recoverEl.innerHTML = recoverHtml;
@@ -2702,18 +2712,24 @@
       const challengeCost = p1.fee || 0;
       const profitSplit = (pFunded.profitSplit || 80) / 100;
 
-      // Calculate recover amounts from desired net: recover = desiredNet + challengeCost
+      // Calculate recover amounts from desired net
+      // Key insight: if you pass phase N, the hedge on phase N LOSES its recover amount.
+      // So if you then FAIL phase N+1, you need to recover:
+      //   desiredNet + fee + all previous phase hedge losses (cumulative)
       const phaseNets = [];
       const phaseRecovers = [];
+      let cumulativeLoss = 0; // tracks total hedge losses from passed phases
       for (let i = 1; i <= steps; i++) {
         const v = getInputVal('sim-p' + i + '-net-input');
         const net = v !== '' ? parseFloat(v) || 0 : 0;
         phaseNets.push(net);
-        phaseRecovers.push(net + challengeCost);
+        const recover = net + challengeCost + cumulativeLoss;
+        phaseRecovers.push(recover);
+        cumulativeLoss += recover; // if this phase passes, hedge loses this recover amount
       }
       const fundedNetVal = getInputVal('sim-funded-net-input');
       const fundedNet = fundedNetVal !== '' ? parseFloat(fundedNetVal) || 0 : 0;
-      const fundedRecover = fundedNet + challengeCost;
+      const fundedRecover = fundedNet + challengeCost + cumulativeLoss;
 
       // Save sim inputs (funded goal saved per step count)
       let saveData;
@@ -2724,26 +2740,31 @@
       for (let i = 1; i <= 3; i++) saveData['p' + i + 'NetCustom'] = getInputVal('sim-p' + i + '-net-input');
       localStorage.setItem('hedgeSimInputs', JSON.stringify(saveData));
 
-      // Total Funds Needed = all recover amounts + challenge fee
-      // (each phase needs its recover amount in the real account, plus the one-time fee)
-      const totalRecovers = phaseRecovers.reduce((a, b) => a + b, 0) + fundedRecover;
-      const totalFundsNeeded = totalRecovers + challengeCost;
+      // Total Funds Needed: only the highest single recover amount is needed at any time
+      // (since you deposit per phase, not all at once). But total capital at risk = sum of all.
+      // For "all pass" net: you lose every hedge + pay the fee, then get the funded payout.
+      const totalHedgeLosses = phaseRecovers.reduce((a, b) => a + b, 0) + fundedRecover;
+      const totalFundsNeeded = totalHedgeLosses + challengeCost;
       const fundedPayout = fundedGoal * profitSplit;
-      const netAllPass = fundedPayout - totalRecovers - challengeCost + (refund ? challengeCost : 0);
+      const netAllPass = fundedPayout - totalHedgeLosses - challengeCost + (refund ? challengeCost : 0);
       const hasData = challengeCost > 0 || phaseNets.some(n => n > 0) || fundedNet > 0;
 
       // Build stat boxes
       let statsHtml = `
         <div class="challenge-stat-box"><div class="csl">Challenge Fee</div><div class="csv">${challengeCost > 0 ? '$' + challengeCost.toFixed(2) : '--'}</div></div>`;
 
+      let priorLoss = 0;
       for (let i = 0; i < steps; i++) {
         const pLabel = steps === 1 ? 'Eval' : 'P' + (i + 1);
+        const breakdownTitle = `Fee $${challengeCost.toFixed(0)}${priorLoss > 0 ? ' + Prior losses $' + priorLoss.toFixed(0) : ''}${phaseNets[i] > 0 ? ' + Net $' + phaseNets[i].toFixed(0) : ''}`;
         statsHtml += `<div class="challenge-stat-box"><div class="csl">${pLabel} Net on Fail</div><div class="csv buy-text">${hasData ? '+$' + phaseNets[i].toFixed(2) : '--'}</div></div>`;
-        statsHtml += `<div class="challenge-stat-box"><div class="csl">${pLabel} Hedge Recover</div><div class="csv">${hasData ? '$' + phaseRecovers[i].toFixed(2) : '--'}</div></div>`;
+        statsHtml += `<div class="challenge-stat-box" title="${breakdownTitle}"><div class="csl">${pLabel} Hedge Recover</div><div class="csv">${hasData ? '$' + phaseRecovers[i].toFixed(2) : '--'}</div></div>`;
+        priorLoss += phaseRecovers[i];
       }
+      const fundedBreakdownTitle = `Fee $${challengeCost.toFixed(0)}${priorLoss > 0 ? ' + Prior losses $' + priorLoss.toFixed(0) : ''}${fundedNet > 0 ? ' + Net $' + fundedNet.toFixed(0) : ''}`;
       statsHtml += `
         <div class="challenge-stat-box"><div class="csl">Funded Net on Fail</div><div class="csv buy-text">${hasData ? '+$' + fundedNet.toFixed(2) : '--'}</div></div>
-        <div class="challenge-stat-box"><div class="csl">Funded Hedge Recover</div><div class="csv">${hasData ? '$' + fundedRecover.toFixed(2) : '--'}</div></div>
+        <div class="challenge-stat-box" title="${fundedBreakdownTitle}"><div class="csl">Funded Hedge Recover</div><div class="csv">${hasData ? '$' + fundedRecover.toFixed(2) : '--'}</div></div>
         <div class="challenge-stat-box"><div class="csl">Total Funds Needed</div><div class="csv">${totalFundsNeeded > 0 ? '$' + totalFundsNeeded.toFixed(2) : '--'}</div></div>`;
 
       const netClass = netAllPass >= 0 ? 'buy-text' : 'sell-text';
@@ -2762,10 +2783,17 @@
       // Each phase starts with exactly its recover amount in the real account
       const scenarios = [];
 
+      let lostSoFar = 0; // cumulative hedge losses from passed phases
       for (let i = 0; i < steps; i++) {
         const phaseLabel = steps === 1 ? 'Evaluation' : 'Phase ' + (i + 1);
         const recover = phaseRecovers[i];
         const nextLabel = (i === steps - 1) ? 'Funded' : 'Phase ' + (i + 2);
+        const nextDeposit = (i === steps - 1) ? fundedRecover : phaseRecovers[i + 1];
+
+        // Build recover breakdown for tooltip
+        const recoverParts = ['Fee $' + challengeCost.toFixed(0)];
+        if (lostSoFar > 0) recoverParts.push('Prior losses $' + lostSoFar.toFixed(0));
+        if (phaseNets[i] > 0) recoverParts.push('Net $' + phaseNets[i].toFixed(0));
 
         // FAIL: hedge wins recover, you withdraw and net the profit
         scenarios.push({
@@ -2773,7 +2801,7 @@
           deposit: '$' + recover.toFixed(0),
           hedgeResult: '+$' + recover.toFixed(2), hedgeClass: 'buy-text',
           net: '+$' + phaseNets[i].toFixed(0),
-          action: `Withdraw $${recover.toFixed(0)}, pay fee $${challengeCost.toFixed(0)}, net +$${phaseNets[i].toFixed(0)} & retry`
+          action: `Hedge wins $${recover.toFixed(0)} (${recoverParts.join(' + ')}). Covers fee + losses, net +$${phaseNets[i].toFixed(0)} & retry`
         });
 
         // PASS: hedge loses recover, you move on
@@ -2782,17 +2810,23 @@
           deposit: '$' + recover.toFixed(0),
           hedgeResult: '-$' + recover.toFixed(2), hedgeClass: 'sell-text',
           net: '-$' + recover.toFixed(0),
-          action: `Hedge lost $${recover.toFixed(0)}. Deposit $${phaseRecovers[Math.min(i + 1, steps - 1)] === undefined ? fundedRecover.toFixed(0) : (i === steps - 1 ? fundedRecover.toFixed(0) : phaseRecovers[i + 1].toFixed(0))} for ${nextLabel}`
+          action: `Hedge lost $${recover.toFixed(0)}. Deposit $${nextDeposit.toFixed(0)} for ${nextLabel} (includes this loss)`
         });
+
+        lostSoFar += recover;
       }
 
-      // Funded FAIL
+      // Funded FAIL - recover parts
+      const fundedRecoverParts = ['Fee $' + challengeCost.toFixed(0)];
+      if (lostSoFar > 0) fundedRecoverParts.push('Prior losses $' + lostSoFar.toFixed(0));
+      if (fundedNet > 0) fundedRecoverParts.push('Net $' + fundedNet.toFixed(0));
+
       scenarios.push({
         phase: 'Funded', outcome: 'FAIL', outcomeClass: 'sell-text',
         deposit: '$' + fundedRecover.toFixed(0),
         hedgeResult: '+$' + fundedRecover.toFixed(2), hedgeClass: 'buy-text',
         net: '+$' + fundedNet.toFixed(0),
-        action: `Withdraw $${fundedRecover.toFixed(0)}, pay fee $${challengeCost.toFixed(0)}, net +$${fundedNet.toFixed(0)} & restart`
+        action: `Hedge wins $${fundedRecover.toFixed(0)} (${fundedRecoverParts.join(' + ')}). Covers everything, net +$${fundedNet.toFixed(0)} & restart`
       });
 
       // Funded PASS
@@ -2854,7 +2888,7 @@
           <span class="${netClass}" style="border-top:1px solid var(--border); padding-top:0.4rem; font-weight:700; text-align:right;">${netSign}$${Math.abs(netAllPass).toFixed(2)}</span>
         </div>
         <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-secondary);">
-          Total funds needed: $${totalFundsNeeded.toFixed(2)} (Fee $${challengeCost.toFixed(0)} + All recovers $${totalRecovers.toFixed(0)})
+          Total funds needed: $${totalFundsNeeded.toFixed(2)} (Fee $${challengeCost.toFixed(0)} + All hedge deposits $${totalHedgeLosses.toFixed(0)}). Each phase recover includes fee + prior phase losses.
         </div>
       </div>`;
 
