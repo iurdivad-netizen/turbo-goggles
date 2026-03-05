@@ -290,18 +290,82 @@
       color: var(--sell-color);
     }
 
-    .risk-preview {
-      margin-top: 0.6rem;
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-      display: flex;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-    }
-
     .risk-preview span { font-weight: 600; }
     .risk-preview .risk-amt { color: var(--sell-color); }
     .risk-preview .reward-amt { color: var(--buy-color); }
+
+    /* Trade preview panels */
+    .trade-preview-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      margin-top: 0.75rem;
+    }
+
+    .preview-panel {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+    }
+
+    .preview-panel-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .preview-panel-title .dir-badge {
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .preview-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      padding: 0.2rem 0;
+    }
+
+    .preview-row-label {
+      color: var(--text-secondary);
+    }
+
+    .preview-row-value {
+      font-weight: 600;
+    }
+
+    .preview-summary {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+      margin-top: 0.6rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.5rem;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+
+    .preview-summary-item .psl {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      letter-spacing: 0.03em;
+    }
+
+    .preview-summary-item .psv {
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-top: 0.1rem;
+    }
 
     /* Progress bars */
     .progress-container {
@@ -882,23 +946,70 @@
         </div>
       </div>
 
-      <div class="hedge-preview" id="hedge-preview">
-        <div class="hedge-preview-title">Hedge Preview</div>
-        <div class="hedge-arrows">
-          <span>Prop: <span class="hedge-badge badge-buy" id="preview-prop">BUY</span></span>
-          <span class="arrow">&rarr;</span>
-          <span>Personal: <span class="hedge-badge badge-sell" id="preview-personal">SELL</span></span>
+      <div id="hedge-preview">
+        <div class="trade-preview-panels">
+          <div class="preview-panel">
+            <div class="preview-panel-title">
+              Prop Firm Account
+              <span class="dir-badge badge-buy" id="preview-prop-badge">BUY</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Entry</span>
+              <span class="preview-row-value" id="preview-prop-entry">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Stop Loss</span>
+              <span class="preview-row-value" id="preview-prop-sl">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Take Profit</span>
+              <span class="preview-row-value" id="preview-prop-tp">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Lots</span>
+              <span class="preview-row-value" id="preview-prop-lots">--</span>
+            </div>
+          </div>
+          <div class="preview-panel">
+            <div class="preview-panel-title">
+              Personal Hedge
+              <span class="dir-badge badge-sell" id="preview-hedge-badge">SELL</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Entry</span>
+              <span class="preview-row-value" id="preview-hedge-entry">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Stop Loss</span>
+              <span class="preview-row-value" id="preview-hedge-sl">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Take Profit</span>
+              <span class="preview-row-value" id="preview-hedge-tp">--</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-row-label">Lots</span>
+              <span class="preview-row-value" id="preview-hedge-lots">--</span>
+            </div>
+          </div>
         </div>
-        <div class="risk-preview" id="risk-preview">
-          <div>SL: <span class="risk-amt" id="preview-sl-pips">--</span></div>
-          <div>TP: <span class="reward-amt" id="preview-tp-pips">--</span></div>
-          <div>Risk: <span class="risk-amt" id="preview-risk">--</span></div>
-          <div>Reward: <span class="reward-amt" id="preview-reward">--</span></div>
-          <div>R:R <span id="preview-rr">--</span></div>
+        <div class="preview-summary">
+          <div class="preview-summary-item">
+            <div class="psl">Risk</div>
+            <div class="psv sell-text" id="preview-risk">--</div>
+          </div>
+          <div class="preview-summary-item">
+            <div class="psl">Reward</div>
+            <div class="psv buy-text" id="preview-reward">--</div>
+          </div>
+          <div class="preview-summary-item">
+            <div class="psl">R:R Ratio</div>
+            <div class="psv" id="preview-rr">--</div>
+          </div>
         </div>
       </div>
 
-      <button class="btn btn-primary" onclick="addSignal()">Add Signal &amp; Create Hedge</button>
+      <button class="btn btn-primary" style="margin-top:1rem" onclick="addSignal()">Add Signal &amp; Create Hedge</button>
     </div>
 
     <!-- Settings Card -->
@@ -1145,15 +1256,14 @@
       currentDirection = dir;
       document.getElementById('btn-buy').className = dir === 'BUY' ? 'active-buy' : '';
       document.getElementById('btn-sell').className = dir === 'SELL' ? 'active-sell' : '';
-
-      const hedgeDir = dir === 'BUY' ? 'SELL' : 'BUY';
-      const pp = document.getElementById('preview-prop');
-      const ph = document.getElementById('preview-personal');
-      pp.textContent = dir;
-      pp.className = 'hedge-badge ' + (dir === 'BUY' ? 'badge-buy' : 'badge-sell');
-      ph.textContent = hedgeDir;
-      ph.className = 'hedge-badge ' + (hedgeDir === 'BUY' ? 'badge-buy' : 'badge-sell');
       updateRiskPreview();
+    }
+
+    function fmtPrice(val, pair) {
+      if (val === null || val === undefined || isNaN(val)) return '--';
+      if (pair && (pair.includes('JPY') || pair === 'US30' || pair === 'NAS100')) return val.toFixed(2);
+      if (pair === 'XAU/USD') return val.toFixed(2);
+      return val.toFixed(5);
     }
 
     function updateRiskPreview() {
@@ -1168,10 +1278,30 @@
       const { slPrice, tpPrice, slPips, tpPips } = getSlTpPrices();
       const rr = calcRiskReward(pair, hedgeLots, entry, slPrice, tpPrice, hedgeDir);
 
-      document.getElementById('preview-sl-pips').textContent = slPips !== null ? slPips.toFixed(1) + ' pips' : '--';
-      document.getElementById('preview-tp-pips').textContent = tpPips !== null ? tpPips.toFixed(1) + ' pips' : '--';
-      document.getElementById('preview-risk').textContent = rr.risk$ > 0 ? '$' + rr.risk$.toFixed(2) : '--';
-      document.getElementById('preview-reward').textContent = rr.reward$ > 0 ? '$' + rr.reward$.toFixed(2) : '--';
+      // Prop panel
+      const propBadge = document.getElementById('preview-prop-badge');
+      propBadge.textContent = currentDirection;
+      propBadge.className = 'dir-badge ' + (currentDirection === 'BUY' ? 'badge-buy' : 'badge-sell');
+      document.getElementById('preview-prop-entry').textContent = entry ? fmtPrice(entry, pair) : '--';
+      document.getElementById('preview-prop-sl').textContent = slPrice !== null ? fmtPrice(slPrice, pair) + (slPips !== null ? ' (' + slPips.toFixed(1) + ' pips)' : '') : '--';
+      document.getElementById('preview-prop-tp').textContent = tpPrice !== null ? fmtPrice(tpPrice, pair) + (tpPips !== null ? ' (' + tpPips.toFixed(1) + ' pips)' : '') : '--';
+      document.getElementById('preview-prop-lots').textContent = lots > 0 ? lots.toFixed(2) : '--';
+
+      // Hedge panel
+      const hedgeBadge = document.getElementById('preview-hedge-badge');
+      hedgeBadge.textContent = hedgeDir;
+      hedgeBadge.className = 'dir-badge ' + (hedgeDir === 'BUY' ? 'badge-buy' : 'badge-sell');
+      document.getElementById('preview-hedge-entry').textContent = entry ? fmtPrice(entry, pair) : '--';
+      // Hedge mirrors SL/TP based on settings
+      const mirrorSl = document.getElementById('setting-mirror-sl').checked;
+      const mirrorTp = document.getElementById('setting-mirror-tp').checked;
+      document.getElementById('preview-hedge-sl').textContent = mirrorSl && slPrice !== null ? fmtPrice(slPrice, pair) + (slPips !== null ? ' (' + slPips.toFixed(1) + ' pips)' : '') : '--';
+      document.getElementById('preview-hedge-tp').textContent = mirrorTp && tpPrice !== null ? fmtPrice(tpPrice, pair) + (tpPips !== null ? ' (' + tpPips.toFixed(1) + ' pips)' : '') : '--';
+      document.getElementById('preview-hedge-lots').textContent = hedgeLots > 0 ? hedgeLots.toFixed(2) : '--';
+
+      // Summary
+      document.getElementById('preview-risk').textContent = rr.risk$ > 0 ? slPips.toFixed(1) + ' pips / $' + rr.risk$.toFixed(2) : '--';
+      document.getElementById('preview-reward').textContent = rr.reward$ > 0 ? tpPips.toFixed(1) + ' pips / $' + rr.reward$.toFixed(2) : '--';
       document.getElementById('preview-rr').textContent = rr.rr > 0 ? '1:' + rr.rr.toFixed(2) : '--';
     }
 
@@ -1317,14 +1447,14 @@
           <td>${t.entry}</td>
           <td>${t.sl !== null ? t.sl : '--'}</td>
           <td>${t.tp !== null ? t.tp : '--'}</td>
-          <td class="sell-text">${t.slPips !== null ? t.slPips.toFixed(1) : '--'}</td>
-          <td class="buy-text">${t.tpPips !== null ? t.tpPips.toFixed(1) : '--'}</td>
-          <td class="sell-text">${t.riskAmt !== null ? '$' + t.riskAmt.toFixed(2) : '--'}</td>
-          <td class="buy-text">${t.rewardAmt !== null ? '$' + t.rewardAmt.toFixed(2) : '--'}</td>
-          <td>${t.rrRatio !== null ? '1:' + t.rrRatio.toFixed(2) : '--'}</td>
-          <td>${t.closePrice !== null ? t.closePrice : '--'}</td>
-          <td class="${t.pnlPips !== null ? (t.pnlPips >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnlPips !== null ? (t.pnlPips >= 0 ? '+' : '') + t.pnlPips.toFixed(1) : '--'}</td>
-          <td class="${t.pnl !== null ? (t.pnl >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnl !== null ? (t.pnl >= 0 ? '+' : '') + '$' + Math.abs(t.pnl).toFixed(2) : '--'}</td>
+          <td class="sell-text">${t.slPips != null ? Number(t.slPips).toFixed(1) : '--'}</td>
+          <td class="buy-text">${t.tpPips != null ? Number(t.tpPips).toFixed(1) : '--'}</td>
+          <td class="sell-text">${t.riskAmt != null ? '$' + Number(t.riskAmt).toFixed(2) : '--'}</td>
+          <td class="buy-text">${t.rewardAmt != null ? '$' + Number(t.rewardAmt).toFixed(2) : '--'}</td>
+          <td>${t.rrRatio != null ? '1:' + Number(t.rrRatio).toFixed(2) : '--'}</td>
+          <td>${t.closePrice != null ? t.closePrice : '--'}</td>
+          <td class="${t.pnlPips != null ? (t.pnlPips >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnlPips != null ? (t.pnlPips >= 0 ? '+' : '') + Number(t.pnlPips).toFixed(1) : '--'}</td>
+          <td class="${t.pnl != null ? (t.pnl >= 0 ? 'buy-text' : 'sell-text') : ''}">${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + '$' + Math.abs(t.pnl).toFixed(2) : '--'}</td>
           <td><span class="status-badge ${t.status === 'open' ? 'status-open' : 'status-closed'}">${t.status.toUpperCase()}</span></td>
           <td class="trade-actions">
             ${t.status === 'open' ? `<button class="btn btn-sm btn-primary" onclick="openCloseModal(${t.id})">Close</button>` : ''}
