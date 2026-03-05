@@ -1056,6 +1056,14 @@
 
         <div id="sim-scenario-table" style="margin-top: 0.75rem;"></div>
         <div id="sim-net-breakdown" style="margin-top: 0.75rem;"></div>
+
+        <div style="margin-top: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 0.75rem;">
+          <button class="btn btn-outline" onclick="exportPropSettings()">Export Settings</button>
+          <label class="btn btn-outline" style="cursor:pointer; margin:0;">
+            Import Settings
+            <input type="file" accept=".json" onchange="importPropSettings(event)" style="display:none;">
+          </label>
+        </div>
       </div>
     </div>
   </main>
@@ -2127,6 +2135,74 @@
       a.click();
       URL.revokeObjectURL(url);
       showToast('All data exported as JSON.');
+    }
+
+    function exportPropSettings() {
+      const data = {
+        type: 'prop-settings',
+        version: 1,
+        exportDate: new Date().toISOString(),
+        challengeSteps: challengeSteps,
+        challenge: challenge,
+        simInputs: JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}')
+      };
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'prop_settings_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Prop firm settings exported.');
+    }
+
+    function importPropSettings(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data.challenge) {
+            showToast('Invalid file: no challenge settings found.', true);
+            return;
+          }
+          if (!confirm('Import prop firm settings? This will replace current challenge and simulation settings.')) {
+            return;
+          }
+
+          // Restore challenge steps
+          if (data.challengeSteps) {
+            setChallengeSteps(data.challengeSteps);
+          }
+
+          // Restore challenge data
+          Object.assign(challenge, data.challenge);
+          currentPhase = challenge.phase || 'phase1';
+          localStorage.setItem('hedgeChallenge', JSON.stringify(challenge));
+
+          // Restore sim inputs
+          if (data.simInputs) {
+            localStorage.setItem('hedgeSimInputs', JSON.stringify(data.simInputs));
+            const goalKey = 'fundedGoal_' + challengeSteps;
+            const goalVal = data.simInputs[goalKey] || data.simInputs.fundedGoal;
+            if (goalVal) document.getElementById('sim-funded-goal').value = goalVal;
+            document.getElementById('sim-refund').value = data.simInputs.refund ? 'yes' : 'no';
+          }
+
+          // Force rebuild sim inputs
+          document.getElementById('sim-recover-inputs').dataset.steps = '0';
+
+          buildPhaseTabs();
+          setPhase(currentPhase);
+          showToast('Prop firm settings imported successfully.');
+        } catch (err) {
+          showToast('Failed to parse file: ' + err.message, true);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
     }
 
     function importAllData(event) {
