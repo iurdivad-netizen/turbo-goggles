@@ -95,6 +95,27 @@
     .header-stat-value.negative { color: var(--sell-color); }
     .header-stat-value.warning { color: var(--warning); }
 
+    .header-stats-row {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+
+    .header-stats-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .header-stats-group-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
     main {
       max-width: 1400px;
       margin: 0 auto;
@@ -809,6 +830,10 @@
         justify-content: center;
       }
 
+      .header-stats-row {
+        justify-content: center;
+      }
+
       .form-row, .form-row-3 {
         grid-template-columns: 1fr;
       }
@@ -827,24 +852,48 @@
     </div>
     <div class="header-stats">
       <div class="header-stat">
-        <div class="header-stat-label">Open Trades</div>
+        <div class="header-stat-label">Open</div>
         <div class="header-stat-value" id="stat-open">0</div>
-      </div>
-      <div class="header-stat">
-        <div class="header-stat-label">Hedged P/L</div>
-        <div class="header-stat-value" id="stat-pnl">$0.00</div>
-      </div>
-      <div class="header-stat">
-        <div class="header-stat-label">Total Risk</div>
-        <div class="header-stat-value" id="stat-risk">$0.00</div>
-      </div>
-      <div class="header-stat">
-        <div class="header-stat-label">Total Reward</div>
-        <div class="header-stat-value" id="stat-reward">$0.00</div>
       </div>
       <div class="header-stat">
         <div class="header-stat-label">Win Rate</div>
         <div class="header-stat-value" id="stat-winrate">--</div>
+      </div>
+    </div>
+    <div class="header-stats-row">
+      <div class="header-stats-group">
+        <div class="header-stats-group-label">Prop Firm</div>
+        <div class="header-stats">
+          <div class="header-stat">
+            <div class="header-stat-label">Risk</div>
+            <div class="header-stat-value negative" id="stat-prop-risk">$0.00</div>
+          </div>
+          <div class="header-stat">
+            <div class="header-stat-label">Reward</div>
+            <div class="header-stat-value positive" id="stat-prop-reward">$0.00</div>
+          </div>
+          <div class="header-stat">
+            <div class="header-stat-label">P/L</div>
+            <div class="header-stat-value" id="stat-prop-pnl">$0.00</div>
+          </div>
+        </div>
+      </div>
+      <div class="header-stats-group">
+        <div class="header-stats-group-label">Hedge</div>
+        <div class="header-stats">
+          <div class="header-stat">
+            <div class="header-stat-label">Risk</div>
+            <div class="header-stat-value negative" id="stat-hedge-risk">$0.00</div>
+          </div>
+          <div class="header-stat">
+            <div class="header-stat-label">Reward</div>
+            <div class="header-stat-value positive" id="stat-hedge-reward">$0.00</div>
+          </div>
+          <div class="header-stat">
+            <div class="header-stat-label">P/L</div>
+            <div class="header-stat-value" id="stat-hedge-pnl">$0.00</div>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -1672,7 +1721,8 @@
       const slPipsVal = mirrorSl && slPips !== null ? slPips : null;
       const tpPipsVal = mirrorTp && tpPips !== null ? tpPips : null;
 
-      const rr = calcRiskReward(pair, hedgeLots, entryNum, slNum, tpNum, hedgeDir);
+      const hedgeRR = calcRiskReward(pair, hedgeLots, entryNum, slNum, tpNum, hedgeDir);
+      const propRR = calcRiskReward(pair, lots, entryNum, slPrice, tpPrice, currentDirection);
 
       const trade = {
         id: Date.now(),
@@ -1688,9 +1738,12 @@
         tp: tpNum,
         slPips: slPipsVal,
         tpPips: tpPipsVal,
-        riskAmt: rr.risk$ > 0 ? parseFloat(rr.risk$.toFixed(2)) : null,
-        rewardAmt: rr.reward$ > 0 ? parseFloat(rr.reward$.toFixed(2)) : null,
-        rrRatio: rr.rr > 0 ? parseFloat(rr.rr.toFixed(2)) : null,
+        propRiskAmt: propRR.risk$ > 0 ? parseFloat(propRR.risk$.toFixed(2)) : null,
+        propRewardAmt: propRR.reward$ > 0 ? parseFloat(propRR.reward$.toFixed(2)) : null,
+        propRR: propRR.rr > 0 ? parseFloat(propRR.rr.toFixed(2)) : null,
+        riskAmt: hedgeRR.risk$ > 0 ? parseFloat(hedgeRR.risk$.toFixed(2)) : null,
+        rewardAmt: hedgeRR.reward$ > 0 ? parseFloat(hedgeRR.reward$.toFixed(2)) : null,
+        rrRatio: hedgeRR.rr > 0 ? parseFloat(hedgeRR.rr.toFixed(2)) : null,
         closePrice: null,
         pnl: null,
         pnlPips: null,
@@ -1735,9 +1788,15 @@
       trade.closePrice = closePrice;
       trade.status = 'closed';
 
+      // Hedge P/L
       const pips = calcPips(trade.pair, trade.entry, closePrice, trade.hedgeDirection);
       trade.pnlPips = parseFloat(pips.toFixed(1));
       trade.pnl = parseFloat((pips * getPipValue(trade.pair, trade.lots)).toFixed(2));
+
+      // Prop P/L (opposite direction from hedge)
+      const propPips = calcPips(trade.pair, trade.entry, closePrice, trade.propDirection);
+      trade.propPnlPips = parseFloat(propPips.toFixed(1));
+      trade.propPnl = parseFloat((propPips * getPipValue(trade.pair, trade.propLots || trade.lots)).toFixed(2));
 
       saveTrades();
       renderTrades();
@@ -1802,22 +1861,33 @@
     function updateStats() {
       const openTrades = trades.filter(t => t.status === 'open');
       const closedTrades = trades.filter(t => t.status === 'closed');
-      const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
       const wins = closedTrades.filter(t => t.pnl > 0).length;
-      const totalRisk = trades.reduce((sum, t) => sum + (t.riskAmt || 0), 0);
-      const totalReward = trades.reduce((sum, t) => sum + (t.rewardAmt || 0), 0);
+
+      // Prop firm totals
+      const propRisk = trades.reduce((sum, t) => sum + (t.propRiskAmt || 0), 0);
+      const propReward = trades.reduce((sum, t) => sum + (t.propRewardAmt || 0), 0);
+      const propPnl = closedTrades.reduce((sum, t) => sum + (t.propPnl || 0), 0);
+
+      // Hedge totals
+      const hedgeRisk = trades.reduce((sum, t) => sum + (t.riskAmt || 0), 0);
+      const hedgeReward = trades.reduce((sum, t) => sum + (t.rewardAmt || 0), 0);
+      const hedgePnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
 
       document.getElementById('stat-open').textContent = openTrades.length;
 
-      const pnlEl = document.getElementById('stat-pnl');
-      pnlEl.textContent = (totalPnl >= 0 ? '+' : '-') + '$' + Math.abs(totalPnl).toFixed(2);
-      pnlEl.className = 'header-stat-value ' + (totalPnl >= 0 ? 'positive' : 'negative');
+      // Prop stats
+      document.getElementById('stat-prop-risk').textContent = '$' + propRisk.toFixed(2);
+      document.getElementById('stat-prop-reward').textContent = '$' + propReward.toFixed(2);
+      const propPnlEl = document.getElementById('stat-prop-pnl');
+      propPnlEl.textContent = (propPnl >= 0 ? '+' : '-') + '$' + Math.abs(propPnl).toFixed(2);
+      propPnlEl.className = 'header-stat-value ' + (propPnl >= 0 ? 'positive' : 'negative');
 
-      document.getElementById('stat-risk').textContent = '$' + totalRisk.toFixed(2);
-      document.getElementById('stat-risk').className = 'header-stat-value negative';
-
-      document.getElementById('stat-reward').textContent = '$' + totalReward.toFixed(2);
-      document.getElementById('stat-reward').className = 'header-stat-value positive';
+      // Hedge stats
+      document.getElementById('stat-hedge-risk').textContent = '$' + hedgeRisk.toFixed(2);
+      document.getElementById('stat-hedge-reward').textContent = '$' + hedgeReward.toFixed(2);
+      const hedgePnlEl = document.getElementById('stat-hedge-pnl');
+      hedgePnlEl.textContent = (hedgePnl >= 0 ? '+' : '-') + '$' + Math.abs(hedgePnl).toFixed(2);
+      hedgePnlEl.className = 'header-stat-value ' + (hedgePnl >= 0 ? 'positive' : 'negative');
 
       const winrateEl = document.getElementById('stat-winrate');
       if (closedTrades.length > 0) {
