@@ -717,6 +717,37 @@
       display: block;
     }
 
+    /* Phase simulation summary */
+    .sim-phase-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    .sim-phase-table th {
+      text-align: left;
+      padding: 0.5rem 0.6rem;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sim-phase-table td {
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sim-phase-table tr:last-child td {
+      border-bottom: none;
+      font-weight: 700;
+    }
+
+    .sim-phase-table .phase-active {
+      color: var(--accent);
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       main {
@@ -887,6 +918,47 @@
 
       <div class="breach-alert" id="breach-alert">
         BREACH WARNING: You are approaching or have exceeded a challenge limit!
+      </div>
+
+      <!-- Bankroll Simulation -->
+      <div style="margin-top: 1.25rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+        <div class="card-title"><span class="dot dot-danger"></span> Hedge Account Bankroll Simulation</div>
+        <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+          Estimates the minimum personal account balance needed to sustain the hedge strategy through each challenge phase, based on worst-case drawdown, concurrent margin, and a safety buffer.
+        </p>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Leverage (e.g. 100 = 1:100)</label>
+            <input type="number" id="sim-leverage" value="100" min="1" step="1" oninput="updateBankrollSim()">
+          </div>
+          <div class="form-group">
+            <label>Avg Concurrent Open Trades</label>
+            <input type="number" id="sim-concurrent" value="2" min="1" step="1" oninput="updateBankrollSim()">
+          </div>
+          <div class="form-group">
+            <label>Safety Buffer (%)</label>
+            <input type="number" id="sim-buffer" value="30" min="0" step="5" oninput="updateBankrollSim()">
+          </div>
+        </div>
+        <div class="challenge-stats" id="bankroll-sim-grid">
+          <div class="challenge-stat-box">
+            <div class="csl">Max Risk per Trade</div>
+            <div class="csv" id="sim-max-risk">--</div>
+          </div>
+          <div class="challenge-stat-box">
+            <div class="csl">Worst-Case Drawdown</div>
+            <div class="csv" id="sim-worst-dd">--</div>
+          </div>
+          <div class="challenge-stat-box">
+            <div class="csl">Margin Required</div>
+            <div class="csv" id="sim-margin">--</div>
+          </div>
+          <div class="challenge-stat-box">
+            <div class="csl">Total + Buffer</div>
+            <div class="csv" id="sim-total">--</div>
+          </div>
+        </div>
+        <div id="sim-phase-summary" style="margin-top: 0.75rem;"></div>
       </div>
     </div>
 
@@ -1638,6 +1710,9 @@
       }
       breachEl.textContent = breached ? 'BREACH WARNING: ' + breachMsg.join(' | ') : '';
       breachEl.classList.toggle('visible', breached);
+
+      // Update bankroll simulation when challenge data changes
+      if (typeof updateBankrollSim === 'function') updateBankrollSim();
     }
 
     // ── Persistence ──
@@ -1747,11 +1822,106 @@
       }
     }
 
+    // ── Bankroll simulation ──
+    function updateBankrollSim() {
+      const leverage = parseFloat(document.getElementById('sim-leverage').value) || 100;
+      const concurrent = parseInt(document.getElementById('sim-concurrent').value) || 2;
+      const bufferPct = parseFloat(document.getElementById('sim-buffer').value) || 0;
+
+      // Calculate for each phase
+      const phases = ['phase1', 'phase2', 'funded'];
+      const phaseLabels = { phase1: 'Phase 1', phase2: 'Phase 2', funded: 'Funded' };
+      const phaseResults = [];
+
+      phases.forEach(phase => {
+        const p = challenge[phase] || {};
+        const balance = p.balance || 0;
+        const maxDDPct = p.maxDD || 0;
+        const dailyLossPct = p.dailyLoss || 0;
+        const profitTargetPct = p.profitTarget || 0;
+        const maxLots = p.maxLots || 0;
+
+        if (balance <= 0) {
+          phaseResults.push({ phase, label: phaseLabels[phase], balance: 0, maxRisk: 0, worstDD: 0, margin: 0, total: 0 });
+          return;
+        }
+
+        // Max risk per trade: worst case is daily loss limit hit on one trade
+        const maxRiskPerTrade = balance * dailyLossPct / 100;
+
+        // Worst-case drawdown on hedge account:
+        // If prop account hits max DD, hedge account profits that amount.
+        // If prop account hits profit target, hedge account loses that amount.
+        // So worst case for hedge = prop profit target amount (hedge loses the mirror)
+        const worstCaseDD = balance * profitTargetPct / 100;
+
+        // Margin required for concurrent trades
+        // Assuming average trade ~1 standard lot on major pair = ~$100,000 notional
+        // With leverage, margin = notional / leverage
+        // Use maxLots if set, otherwise estimate from risk
+        const lotsEstimate = maxLots > 0 ? maxLots : Math.max(0.1, maxRiskPerTrade / 100);
+        const notionalPerTrade = lotsEstimate * 100000; // standard lot = 100k
+        const marginPerTrade = notionalPerTrade / leverage;
+        const totalMargin = marginPerTrade * concurrent;
+
+        // Total required = worst case DD + margin for open trades + buffer
+        const subtotal = worstCaseDD + totalMargin;
+        const total = subtotal * (1 + bufferPct / 100);
+
+        phaseResults.push({
+          phase, label: phaseLabels[phase], balance,
+          maxRisk: maxRiskPerTrade, worstDD: worstCaseDD,
+          margin: totalMargin, total
+        });
+      });
+
+      // Update current phase stats
+      const current = phaseResults.find(r => r.phase === currentPhase) || phaseResults[0];
+      document.getElementById('sim-max-risk').textContent = current.maxRisk > 0 ? '$' + current.maxRisk.toFixed(2) : '--';
+      document.getElementById('sim-worst-dd').textContent = current.worstDD > 0 ? '$' + current.worstDD.toFixed(2) : '--';
+      document.getElementById('sim-margin').textContent = current.margin > 0 ? '$' + current.margin.toFixed(2) : '--';
+      document.getElementById('sim-total').textContent = current.total > 0 ? '$' + current.total.toFixed(2) : '--';
+
+      // Build phase comparison table
+      const hasData = phaseResults.some(r => r.balance > 0);
+      if (!hasData) {
+        document.getElementById('sim-phase-summary').innerHTML = '';
+        return;
+      }
+
+      const grandTotal = phaseResults.reduce((max, r) => Math.max(max, r.total), 0);
+
+      let html = `<table class="sim-phase-table">
+        <thead><tr>
+          <th>Phase</th><th>Prop Balance</th><th>Worst-Case Loss</th><th>Margin Needed</th><th>Required Bankroll</th>
+        </tr></thead><tbody>`;
+
+      phaseResults.forEach(r => {
+        if (r.balance <= 0) return;
+        const activeClass = r.phase === currentPhase ? ' class="phase-active"' : '';
+        html += `<tr>
+          <td${activeClass}>${r.label}${r.phase === currentPhase ? ' *' : ''}</td>
+          <td>$${r.balance.toLocaleString()}</td>
+          <td class="sell-text">$${r.worstDD.toFixed(2)}</td>
+          <td>$${r.margin.toFixed(2)}</td>
+          <td><strong>$${r.total.toFixed(2)}</strong></td>
+        </tr>`;
+      });
+
+      html += `<tr>
+        <td colspan="4" style="text-align:right; color:var(--text-secondary);">Peak Required Bankroll</td>
+        <td class="buy-text"><strong>$${grandTotal.toFixed(2)}</strong></td>
+      </tr></tbody></table>`;
+
+      document.getElementById('sim-phase-summary').innerHTML = html;
+    }
+
     // ── Initialize ──
     loadChallengeFields();
     renderTrades();
     updateStats();
     updateChallenge();
+    updateBankrollSim();
   </script>
 </body>
 </html>
