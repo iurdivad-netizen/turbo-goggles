@@ -998,6 +998,44 @@
       gap: 0.75rem;
     }
 
+    .fix-paste-box {
+      background: var(--bg-secondary);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .fix-paste-box textarea {
+      width: 100%;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem;
+      font-family: monospace;
+      font-size: 0.75rem;
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .fix-paste-box textarea::placeholder {
+      color: var(--text-secondary);
+      font-size: 0.72rem;
+    }
+
+    .fix-paste-box .paste-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+    }
+
+    .fix-paste-box .paste-hint {
+      font-size: 0.68rem;
+      color: var(--text-secondary);
+    }
+
     .copier-import-section .import-label {
       font-size: 0.8rem;
       color: var(--text-secondary);
@@ -1536,6 +1574,13 @@
             <span id="fix-challenge-status-text">Disconnected</span>
           </span>
         </div>
+        <div class="fix-paste-box">
+          <textarea id="fix-ch-paste" placeholder="Paste broker FIX settings here, e.g:&#10;Host name: live-uk-eqx-01.p.c-trader.com&#10;Port: 5212 (SSL), 5202 (Plain text).&#10;Password: (a/c 8024800 password)&#10;SenderCompID: live.blackbull.8024800&#10;TargetCompID: cServer&#10;SenderSubID: TRADE"></textarea>
+          <div class="paste-actions">
+            <span class="paste-hint">Paste your broker's FIX settings and click Parse</span>
+            <button class="btn btn-sm btn-primary" onclick="parseFixPaste('challenge')">Parse</button>
+          </div>
+        </div>
         <div class="form-group">
           <label>Host</label>
           <input type="text" id="fix-ch-host" placeholder="e.g. demo-uk-eqx-02.p.c-trader.com" oninput="saveFixSettings()">
@@ -1589,6 +1634,13 @@
             <span class="status-dot"></span>
             <span id="fix-hedge-status-text">Disconnected</span>
           </span>
+        </div>
+        <div class="fix-paste-box">
+          <textarea id="fix-hd-paste" placeholder="Paste broker FIX settings here, e.g:&#10;Host name: live-uk-eqx-01.p.c-trader.com&#10;Port: 5212 (SSL), 5202 (Plain text).&#10;SenderCompID: live.icmarkets.7654321&#10;TargetCompID: cServer&#10;SenderSubID: TRADE"></textarea>
+          <div class="paste-actions">
+            <span class="paste-hint">Paste your broker's FIX settings and click Parse</span>
+            <button class="btn btn-sm btn-primary" onclick="parseFixPaste('hedge')">Parse</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Host</label>
@@ -3083,6 +3135,90 @@
     let copierLog = JSON.parse(localStorage.getItem('hedgeCopierLog') || '[]');
     let fixConnections = { challenge: null, hedge: null }; // WebSocket connections
     let fixSeqNums = { challenge: 1, hedge: 1 };
+
+    function parseFixPaste(side) {
+      const prefix = side === 'challenge' ? 'fix-ch' : 'fix-hd';
+      const textarea = document.getElementById(prefix + '-paste');
+      const raw = textarea.value.trim();
+
+      if (!raw) {
+        showToast('Paste your broker FIX settings first.', true);
+        return;
+      }
+
+      const lines = raw.split('\n').map(l => l.trim()).filter(l => l);
+      let parsed = { host: '', port: '', ssl: 'ssl', password: '', sender: '', target: 'cServer', sub: 'TRADE' };
+
+      for (const line of lines) {
+        // Match "Key: Value" or "Key : Value" patterns
+        const match = line.match(/^([^:]+):\s*(.+)$/);
+        if (!match) continue;
+        const key = match[1].trim().toLowerCase();
+        const val = match[2].trim();
+
+        if (key.includes('host')) {
+          parsed.host = val.replace(/\.$/, '');
+        } else if (key === 'port') {
+          // Parse "5212 (SSL), 5202 (Plain text)." — take the SSL port by default
+          const sslMatch = val.match(/(\d+)\s*\(SSL\)/i);
+          const plainMatch = val.match(/(\d+)\s*\(Plain/i);
+          const plainPort = val.match(/^(\d+)$/);
+          if (sslMatch) {
+            parsed.port = sslMatch[1];
+            parsed.ssl = 'ssl';
+          } else if (plainMatch) {
+            parsed.port = plainMatch[1];
+            parsed.ssl = 'plain';
+          } else if (plainPort) {
+            parsed.port = plainPort[1];
+          }
+        } else if (key.includes('password')) {
+          // "Password: (a/c 8024800 password)" — leave blank, user enters manually
+          // But if it looks like an actual password, use it
+          if (!val.match(/^\(.*password\)$/i)) {
+            parsed.password = val;
+          }
+        } else if (key === 'sendercompid') {
+          parsed.sender = val;
+        } else if (key === 'targetcompid') {
+          parsed.target = val;
+        } else if (key === 'sendersubid') {
+          parsed.sub = val;
+        }
+      }
+
+      if (!parsed.host && !parsed.sender) {
+        showToast('Could not parse settings. Check the format.', true);
+        return;
+      }
+
+      // Fill in the fields
+      document.getElementById(prefix + '-host').value = parsed.host;
+      if (parsed.port) document.getElementById(prefix + '-port').value = parsed.port;
+      document.getElementById(prefix + '-ssl').value = parsed.ssl;
+      if (parsed.password) document.getElementById(prefix + '-password').value = parsed.password;
+      document.getElementById(prefix + '-sender').value = parsed.sender;
+      document.getElementById(prefix + '-target').value = parsed.target;
+      document.getElementById(prefix + '-sub').value = parsed.sub;
+
+      // Extract account label from SenderCompID (e.g. "live.blackbull.8024800" → "Blackbull 8024800")
+      if (parsed.sender) {
+        const parts = parsed.sender.split('.');
+        if (parts.length >= 3) {
+          const broker = parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
+          const acctNum = parts[2];
+          document.getElementById(prefix + '-label').value = broker + ' ' + acctNum;
+        }
+      }
+
+      textarea.value = '';
+      saveFixSettings();
+      updateCopierPreview();
+
+      const label = side === 'challenge' ? 'Challenge' : 'Hedge';
+      const passwordNote = parsed.password ? '' : ' (enter password manually)';
+      showToast(`${label} FIX settings parsed: ${parsed.sender}${passwordNote}`);
+    }
 
     function saveFixSettings() {
       const getVal = (id) => document.getElementById(id).value;
