@@ -1565,6 +1565,27 @@
   <!-- Trade Copier Tab -->
   <main id="tab-copier" class="tab-content" style="display:none;">
     <div class="copier-grid">
+      <!-- Bridge Connection -->
+      <div class="card full-width">
+        <div class="card-title">
+          <span class="dot"></span> FIX Bridge
+          <span class="connection-status" id="bridge-status">
+            <span class="status-dot"></span>
+            <span id="bridge-status-text">Disconnected</span>
+          </span>
+        </div>
+        <div class="form-row" style="align-items:end;">
+          <div class="form-group" style="flex:1;">
+            <label>Bridge URL</label>
+            <input type="text" id="bridge-url" value="ws://localhost:8089" placeholder="ws://localhost:8089" oninput="saveBridgeUrl()">
+          </div>
+          <button class="btn btn-primary" id="btn-bridge-connect" onclick="toggleBridge()" style="margin-bottom:0;">Connect Bridge</button>
+        </div>
+        <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:0.5rem;">
+          Run <code>node fix-bridge.js</code> locally to start the WebSocket-to-FIX bridge. The bridge relays orders to your broker over raw TCP.
+        </div>
+      </div>
+
       <!-- Challenge Account FIX Connection -->
       <div class="card">
         <div class="card-title">
@@ -1803,7 +1824,7 @@
           </button>
         </div>
         <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:0.5rem; text-align:center;">
-          FIX protocol requires a WebSocket-to-FIX bridge or server-side proxy. Orders are constructed as FIX 4.4 NewOrderSingle (35=D) messages.
+          Orders are sent as FIX 4.4 NewOrderSingle (35=D) via the bridge. Connect the bridge above first.
         </div>
       </div>
 
@@ -3136,6 +3157,218 @@
     let fixConnections = { challenge: null, hedge: null }; // WebSocket connections
     let fixSeqNums = { challenge: 1, hedge: 1 };
 
+    // ── Bridge WebSocket ──
+    let bridgeWs = null;
+    let bridgeConnected = false;
+    let bridgePendingCallbacks = {};
+
+    function saveBridgeUrl() {
+      localStorage.setItem('hedgeBridgeUrl', document.getElementById('bridge-url').value);
+    }
+
+    function loadBridgeUrl() {
+      const url = localStorage.getItem('hedgeBridgeUrl');
+      if (url) document.getElementById('bridge-url').value = url;
+    }
+
+    function setBridgeStatus(status, text) {
+      const el = document.getElementById('bridge-status');
+      const textEl = document.getElementById('bridge-status-text');
+      if (el) el.className = 'connection-status ' + status;
+      if (textEl) textEl.textContent = text;
+    }
+
+    function toggleBridge() {
+      if (bridgeWs && bridgeWs.readyState <= 1) {
+        bridgeWs.close();
+        return;
+      }
+      connectBridge();
+    }
+
+    function connectBridge() {
+      const url = document.getElementById('bridge-url').value.trim();
+      if (!url) { showToast('Enter bridge URL.', true); return; }
+
+      setBridgeStatus('', 'Connecting...');
+      document.getElementById('btn-bridge-connect').textContent = 'Connecting...';
+      addCopierLog(`Bridge: Connecting to ${url}...`, 'info');
+
+      try {
+        bridgeWs = new WebSocket(url);
+      } catch (err) {
+        setBridgeStatus('error', 'Failed');
+        addCopierLog(`Bridge: Invalid URL — ${err.message}`, 'error');
+        document.getElementById('btn-bridge-connect').textContent = 'Connect Bridge';
+        return;
+      }
+
+      bridgeWs.onopen = function() {
+        bridgeConnected = true;
+        setBridgeStatus('connected', 'Connected');
+        document.getElementById('btn-bridge-connect').textContent = 'Disconnect';
+        addCopierLog('Bridge: Connected!', 'success');
+        showToast('FIX bridge connected.');
+        updateSendButtonState();
+      };
+
+      bridgeWs.onmessage = function(evt) {
+        let data;
+        try { data = JSON.parse(evt.data); } catch { return; }
+
+        if (data.type === 'fix_response') {
+          addCopierLog(`FIX← [${data.key}]: ${data.message.replace(/\|/g, ' | ')}`, 'info');
+          // Parse execution report
+          parseFixResponse(data);
+        } else if (data.type === 'connected') {
+          addCopierLog(`Bridge: TCP connected to ${data.key}`, 'success');
+          // Resolve pending callback
+          if (bridgePendingCallbacks[data.id]) {
+            bridgePendingCallbacks[data.id].resolve(data);
+            delete bridgePendingCallbacks[data.id];
+          }
+        } else if (data.type === 'sent') {
+          if (bridgePendingCallbacks[data.id]) {
+            bridgePendingCallbacks[data.id].resolve(data);
+            delete bridgePendingCallbacks[data.id];
+          }
+        } else if (data.type === 'disconnected') {
+          addCopierLog(`Bridge: TCP disconnected from ${data.key}`, 'info');
+        } else if (data.type === 'error') {
+          addCopierLog(`Bridge error [${data.key || ''}]: ${data.message}`, 'error');
+          if (bridgePendingCallbacks[data.id]) {
+            bridgePendingCallbacks[data.id].reject(new Error(data.message));
+            delete bridgePendingCallbacks[data.id];
+          }
+        }
+      };
+
+      bridgeWs.onclose = function() {
+        bridgeConnected = false;
+        setBridgeStatus('', 'Disconnected');
+        document.getElementById('btn-bridge-connect').textContent = 'Connect Bridge';
+        addCopierLog('Bridge: Disconnected.', 'info');
+        updateSendButtonState();
+      };
+
+      bridgeWs.onerror = function() {
+        setBridgeStatus('error', 'Error');
+        addCopierLog('Bridge: Connection error. Is fix-bridge.js running?', 'error');
+        showToast('Bridge connection failed. Run: node fix-bridge.js', true);
+      };
+    }
+
+    function bridgeSend(payload) {
+      return new Promise((resolve, reject) => {
+        if (!bridgeWs || bridgeWs.readyState !== 1) {
+          reject(new Error('Bridge not connected'));
+          return;
+        }
+        const id = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        payload.id = id;
+        bridgePendingCallbacks[id] = { resolve, reject };
+        bridgeWs.send(JSON.stringify(payload));
+        // Timeout after 15s
+        setTimeout(() => {
+          if (bridgePendingCallbacks[id]) {
+            bridgePendingCallbacks[id].reject(new Error('Timeout'));
+            delete bridgePendingCallbacks[id];
+          }
+        }, 15000);
+      });
+    }
+
+    function parseFixResponse(data) {
+      // Parse key FIX tags from response
+      const fields = {};
+      (data.message || '').split('|').forEach(f => {
+        const eq = f.indexOf('=');
+        if (eq > 0) fields[f.substring(0, eq)] = f.substring(eq + 1);
+      });
+
+      const msgType = fields['35'];
+      if (msgType === '8') {
+        // Execution Report
+        const ordStatus = { '0': 'New', '1': 'Partial', '2': 'Filled', '4': 'Canceled', '8': 'Rejected' };
+        const status = ordStatus[fields['39']] || fields['39'];
+        const side = fields['54'] === '1' ? 'BUY' : 'SELL';
+        const symbol = fields['55'] || '';
+        const qty = fields['38'] || '';
+        const price = fields['44'] || fields['31'] || '';
+        const text = fields['58'] || '';
+        const orderId = fields['37'] || '';
+
+        if (fields['39'] === '8') {
+          addCopierLog(`REJECTED: ${side} ${symbol} — ${text}`, 'error');
+        } else {
+          addCopierLog(`EXEC: ${status} ${side} ${symbol} qty=${qty} price=${price} orderId=${orderId}`, 'success');
+        }
+      } else if (msgType === 'A') {
+        addCopierLog(`FIX Logon accepted by ${fields['49'] || 'server'}`, 'success');
+      } else if (msgType === '5') {
+        addCopierLog(`FIX Logout: ${fields['58'] || 'Session ended'}`, 'info');
+      } else if (msgType === '3') {
+        addCopierLog(`FIX Reject: ${fields['58'] || 'Unknown error'} (ref=${fields['45'] || '?'})`, 'error');
+      }
+    }
+
+    async function connectAndLogon(side) {
+      const cfg = getFixConfig(side);
+      const label = side === 'challenge' ? 'Challenge' : 'Hedge';
+
+      // 1. Open TCP connection via bridge
+      addCopierLog(`${label}: Connecting to ${cfg.host}:${cfg.port} via bridge...`, 'info');
+      setFixStatus(side, '', 'Connecting...');
+
+      try {
+        await bridgeSend({ action: 'connect', host: cfg.host, port: cfg.port, ssl: cfg.ssl });
+      } catch (err) {
+        setFixStatus(side, 'error', 'Failed');
+        addCopierLog(`${label}: Connection failed — ${err.message}`, 'error');
+        showToast(`${label}: Connection failed — ${err.message}`, true);
+        return false;
+      }
+
+      // 2. Send FIX Logon
+      const logonMsg = buildFixLogon(cfg, fixSeqNums[side], false);
+      addCopierLog(`${label} Logon (35=A): ${buildFixLogon(cfg, fixSeqNums[side], true).replace(/\|/g, ' | ')}`, 'info');
+      fixSeqNums[side]++;
+
+      try {
+        await bridgeSend({ action: 'send', host: cfg.host, port: cfg.port, fixMessage: logonMsg });
+        setFixStatus(side, 'connected', 'Logged In');
+        fixConnections[side] = { host: cfg.host, port: cfg.port };
+        addCopierLog(`${label}: Logon sent! Waiting for server response...`, 'success');
+        showToast(`${label}: Logon sent to ${cfg.host}:${cfg.port}`);
+        return true;
+      } catch (err) {
+        setFixStatus(side, 'error', 'Logon Failed');
+        addCopierLog(`${label}: Logon send failed — ${err.message}`, 'error');
+        return false;
+      }
+    }
+
+    async function sendFixOrder(side, fixMessage) {
+      const cfg = getFixConfig(side);
+      const label = side === 'challenge' ? 'Challenge' : 'Hedge';
+
+      if (!fixConnections[side]) {
+        addCopierLog(`${label}: Not connected. Connecting first...`, 'info');
+        const ok = await connectAndLogon(side);
+        if (!ok) return false;
+        // Small delay to allow logon to be processed
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      try {
+        await bridgeSend({ action: 'send', host: cfg.host, port: cfg.port, fixMessage });
+        return true;
+      } catch (err) {
+        addCopierLog(`${label}: Send failed — ${err.message}`, 'error');
+        return false;
+      }
+    }
+
     function parseFixPaste(side) {
       const prefix = side === 'challenge' ? 'fix-ch' : 'fix-hd';
       const textarea = document.getElementById(prefix + '-paste');
@@ -3465,62 +3698,14 @@
         return;
       }
 
-      setFixStatus(side, '', 'Testing...');
-      addCopierLog(`Testing ${label} FIX: ${cfg.sender} → ${cfg.target} @ ${cfg.host}:${cfg.port}...`, 'info');
-
-      // Show logon message with password masked
-      const logonMsg = buildFixLogon(cfg, fixSeqNums[side], true);
-      addCopierLog(`${label} Logon (35=A): ${logonMsg.replace(/\|/g, ' | ')}`, 'info');
-
-      const protocol = cfg.ssl === 'ssl' ? 'wss' : 'ws';
-
-      // Attempt WebSocket connection to test reachability
-      let ws;
-      let timedOut = false;
-      const timeout = setTimeout(() => {
-        timedOut = true;
-        if (ws) { try { ws.close(); } catch(e){} }
-        // Timeout isn't necessarily a failure — FIX servers don't speak WebSocket,
-        // so a connection refused or timeout just means we can't test from browser
-        setFixStatus(side, 'connected', 'Configured');
-        addCopierLog(`${label}: Could not verify reachability from browser (FIX uses TCP, not WebSocket). Settings look correct.`, 'info');
-        addCopierLog(`${label} configured: ${cfg.ssl === 'ssl' ? 'SSL' : 'Plain'} → ${cfg.host}:${cfg.port} | ${cfg.sender}`, 'success');
-      }, 5000);
-
-      try {
-        ws = new WebSocket(`${protocol}://${cfg.host}:${cfg.port}`);
-
-        ws.onopen = function() {
-          clearTimeout(timeout);
-          if (timedOut) return;
-          // Connection opened — host:port is reachable
-          ws.close();
-          setFixStatus(side, 'connected', 'Reachable');
-          addCopierLog(`${label}: Host ${cfg.host}:${cfg.port} is reachable! FIX handshake requires a FIX client.`, 'success');
-          showToast(`${label}: Host is reachable!`);
-        };
-
-        ws.onerror = function() {
-          clearTimeout(timeout);
-          if (timedOut) return;
-          // Error could mean: CORS blocked, not a WS server (expected for FIX), or host unreachable
-          // We can't distinguish, so mark as configured
-          setFixStatus(side, 'connected', 'Configured');
-          addCopierLog(`${label}: Host responded but rejected WebSocket (expected — FIX uses raw TCP). Settings saved.`, 'info');
-          addCopierLog(`${label} configured: ${cfg.ssl === 'ssl' ? 'SSL' : 'Plain'} → ${cfg.host}:${cfg.port} | ${cfg.sender}`, 'success');
-          showToast(`${label} FIX settings configured.`);
-        };
-
-        ws.onclose = function() {
-          clearTimeout(timeout);
-        };
-      } catch (err) {
-        clearTimeout(timeout);
-        // WebSocket constructor can throw for invalid URLs
-        setFixStatus(side, 'connected', 'Configured');
-        addCopierLog(`${label} configured: ${cfg.ssl === 'ssl' ? 'SSL' : 'Plain'} → ${cfg.host}:${cfg.port} | ${cfg.sender}`, 'success');
-        showToast(`${label} FIX settings configured.`);
+      if (!bridgeConnected) {
+        showToast('Connect the FIX bridge first (click "Connect Bridge" above).', true);
+        return;
       }
+
+      setFixStatus(side, '', 'Testing...');
+      addCopierLog(`Testing ${label} FIX: ${cfg.sender} → ${cfg.target} @ ${cfg.host}:${cfg.port} via bridge...`, 'info');
+      connectAndLogon(side);
     }
 
     function addCopierLog(msg, type) {
@@ -3551,7 +3736,7 @@
       renderCopierLog();
     }
 
-    function sendToBothAccounts() {
+    async function sendToBothAccounts() {
       const btn = document.getElementById('btn-send-both');
       const symbol = document.getElementById('ct-pair').value;
       const volume = document.getElementById('ct-volume').value;
@@ -3591,8 +3776,24 @@
       addCopierLog(`HEDGE ${hedgeDir} ${hedgeVolume} lots ${symbol}`, 'info');
       addCopierLog(`FIX 35=D: ${hdMsg.replace(/\|/g, ' | ')}`, 'info');
 
-      // Log the orders (FIX requires a TCP bridge to actually send)
-      addCopierLog(`Orders constructed for ${chCfg.label || 'Challenge'} + ${hdCfg.label || 'Hedge'}. Route via FIX bridge to execute.`, 'success');
+      // Send via bridge
+      if (bridgeConnected) {
+        try {
+          const [chOk, hdOk] = await Promise.all([
+            sendFixOrder('challenge', chMsg),
+            sendFixOrder('hedge', hdMsg)
+          ]);
+          if (chOk && hdOk) {
+            addCopierLog(`Orders sent to both accounts via bridge!`, 'success');
+          } else {
+            addCopierLog(`Some orders failed to send. Check log above.`, 'error');
+          }
+        } catch (err) {
+          addCopierLog(`Send error: ${err.message}`, 'error');
+        }
+      } else {
+        addCopierLog(`Bridge not connected. Orders logged but NOT sent. Connect the bridge to send.`, 'error');
+      }
 
       // Also log to local trade list
       const pairDisplay = symbol.replace(/(.{3})(.{3})/, '$1/$2');
@@ -3619,7 +3820,7 @@
       renderTrades();
       updateStats();
 
-      showToast(`Orders constructed: ${copierDirection} ${volume} + ${hedgeDir} ${hedgeVolume} lots ${symbol}`);
+      showToast(`Orders sent: ${copierDirection} ${volume} + ${hedgeDir} ${hedgeVolume} lots ${symbol}`);
 
       btn.disabled = false;
       btn.textContent = 'Send to Both Accounts';
@@ -3628,9 +3829,13 @@
     }
 
     // ── Auto-send from Trading tab via FIX ──
-    function autoSendViaFix(trade) {
+    async function autoSendViaFix(trade) {
       if (!isFixConfigured('challenge') || !isFixConfigured('hedge')) {
         showToast('FIX connections not configured. Set up in Trade Copier tab.', true);
+        return;
+      }
+      if (!bridgeConnected) {
+        showToast('FIX bridge not connected. Connect in Trade Copier tab.', true);
         return;
       }
 
@@ -3657,10 +3862,25 @@
       addCopierLog(`FIX 35=D: ${chMsg.replace(/\|/g, ' | ')}`, 'info');
       addCopierLog(`Auto: HEDGE ${trade.hedgeDirection} ${trade.lots} lots ${symbol}`, 'info');
       addCopierLog(`FIX 35=D: ${hdMsg.replace(/\|/g, ' | ')}`, 'info');
-      addCopierLog(`Orders constructed for ${chCfg.label || 'Challenge'} + ${hdCfg.label || 'Hedge'}. Route via FIX bridge to execute.`, 'success');
 
-      setTradingCTraderStatus('connected', 'Sent');
-      showToast(`FIX orders constructed: ${trade.propDirection} ${trade.propLots} + ${trade.hedgeDirection} ${trade.lots} lots ${symbol}`);
+      try {
+        const [chOk, hdOk] = await Promise.all([
+          sendFixOrder('challenge', chMsg),
+          sendFixOrder('hedge', hdMsg)
+        ]);
+        if (chOk && hdOk) {
+          addCopierLog(`Auto: Orders sent to both accounts!`, 'success');
+          setTradingCTraderStatus('connected', 'Sent');
+        } else {
+          addCopierLog(`Auto: Some orders failed. Check log.`, 'error');
+          setTradingCTraderStatus('error', 'Partial');
+        }
+      } catch (err) {
+        addCopierLog(`Auto send error: ${err.message}`, 'error');
+        setTradingCTraderStatus('error', 'Error');
+      }
+
+      showToast(`FIX orders sent: ${trade.propDirection} ${trade.propLots} + ${trade.hedgeDirection} ${trade.lots} lots ${symbol}`);
     }
 
     function onAutoSendToggle() {
@@ -3698,6 +3918,7 @@
     updateBankrollSim();
     updateHedgeLotInfo();
     loadFixSettings();
+    loadBridgeUrl();
     renderCopierLog();
     updateCopierPreview();
     // Restore auto-send state

@@ -1,0 +1,12 @@
+{
+  "name": "forex-hedge-fix-bridge",
+  "version": "1.0.0",
+  "description": "WebSocket-to-FIX bridge for the Forex Hedge Strategy app",
+  "scripts": {
+    "bridge": "node fix-bridge.js",
+    "bridge:8090": "node fix-bridge.js --port 8090"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
