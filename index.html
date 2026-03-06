@@ -1792,12 +1792,20 @@
 
   <script>
     let trades = JSON.parse(localStorage.getItem('hedgeTrades') || '[]');
-    let challenge = JSON.parse(localStorage.getItem('hedgeChallenge') || '{}');
+    let challengeSteps = parseInt(localStorage.getItem('hedgeChallengeSteps') || '2');
+    let challenge = JSON.parse(localStorage.getItem('hedgeChallenge_' + challengeSteps) || localStorage.getItem('hedgeChallenge') || '{}');
     let currentDirection = 'BUY';
     let closingTradeId = null;
-    let challengeSteps = parseInt(localStorage.getItem('hedgeChallengeSteps') || '2');
     let currentPhase = challenge.phase || 'phase1';
     let currentMainTab = localStorage.getItem('hedgeMainTab') || 'strategy';
+
+    function getChallengeStorageKey(steps) {
+      return 'hedgeChallenge_' + (steps || challengeSteps);
+    }
+
+    function getSimStorageKey(steps) {
+      return 'hedgeSimInputs_' + (steps || challengeSteps);
+    }
 
     // ── Main tab switching ──
     function switchMainTab(tab) {
@@ -2336,28 +2344,43 @@
     }
 
     function setChallengeSteps(steps) {
-      // Save current funded goal under old step count before switching
-      try {
-        const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
-        simData['fundedGoal_' + challengeSteps] = parseFloat(document.getElementById('sim-funded-goal').value) || 0;
-        localStorage.setItem('hedgeSimInputs', JSON.stringify(simData));
-      } catch(e) {}
+      // Save current challenge settings before switching
+      saveChallenge();
+      // Save current sim inputs under the old step count
+      saveSimInputs();
+
       challengeSteps = steps;
       localStorage.setItem('hedgeChallengeSteps', steps);
       document.getElementById('challenge-steps').value = steps;
 
+      // Load the challenge settings for the new step count
+      challenge = JSON.parse(localStorage.getItem(getChallengeStorageKey()) || '{}');
+
       // If current phase doesn't exist in new step count, reset to phase1
       const phases = getPhaseList();
-      if (!phases.includes(currentPhase)) {
-        currentPhase = 'phase1';
-        challenge.phase = 'phase1';
-      }
+      currentPhase = phases.includes(challenge.phase || currentPhase) ? (challenge.phase || 'phase1') : 'phase1';
+      challenge.phase = currentPhase;
+
+      // Force rebuild sim inputs since step count changed
+      document.getElementById('sim-recover-inputs').dataset.steps = '0';
+
       buildPhaseTabs();
       loadChallengeFields();
       saveChallenge();
       updateChallenge();
       updateHedgeLotInfo();
       updateBankrollSim();
+    }
+
+    function saveSimInputs() {
+      const getInputVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+      let simData;
+      try { simData = JSON.parse(localStorage.getItem(getSimStorageKey()) || '{}'); } catch(e) { simData = {}; }
+      simData.refund = document.getElementById('sim-refund').value === 'yes';
+      simData.fundedGoal = parseFloat(document.getElementById('sim-funded-goal').value) || 0;
+      for (let i = 1; i <= 3; i++) simData['p' + i + 'NetCustom'] = getInputVal('sim-p' + i + '-net-input');
+      simData.fundedNetCustom = getInputVal('sim-funded-net-input');
+      localStorage.setItem(getSimStorageKey(), JSON.stringify(simData));
     }
 
     function setPhase(phase) {
@@ -2399,12 +2422,11 @@
       document.getElementById('challenge-split-group').style.display = isFunded ? '' : 'none';
       document.getElementById('challenge-profit-split').value = (challenge.funded || {}).profitSplit || '';
 
-      // Load sim inputs (static ones only; dynamic inputs are restored by updateBankrollSim)
+      // Load sim inputs from per-step storage (fall back to legacy key)
       try {
-        const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
-        const goalKey = 'fundedGoal_' + challengeSteps;
-        document.getElementById('sim-funded-goal').value = simData[goalKey] || simData.fundedGoal || '';
-        if (simData.refund) document.getElementById('sim-refund').value = simData.refund ? 'yes' : 'no';
+        const simData = JSON.parse(localStorage.getItem(getSimStorageKey()) || localStorage.getItem('hedgeSimInputs') || '{}');
+        document.getElementById('sim-funded-goal').value = simData.fundedGoal || '';
+        if (simData.refund != null) document.getElementById('sim-refund').value = simData.refund ? 'yes' : 'no';
       } catch(e) {}
     }
 
@@ -2433,7 +2455,7 @@
       }
 
       challenge.phase = currentPhase;
-      localStorage.setItem('hedgeChallenge', JSON.stringify(challenge));
+      localStorage.setItem(getChallengeStorageKey(), JSON.stringify(challenge));
     }
 
     function updateChallenge() {
@@ -2579,16 +2601,28 @@
     }
 
     function exportAllData() {
+      saveChallenge();
+      saveSimInputs();
+      const allChallenges = {};
+      const allSimInputs = {};
+      [1, 2, 3].forEach(s => {
+        const ch = localStorage.getItem('hedgeChallenge_' + s);
+        if (ch) allChallenges[s] = JSON.parse(ch);
+        const si = localStorage.getItem('hedgeSimInputs_' + s);
+        if (si) allSimInputs[s] = JSON.parse(si);
+      });
       const data = {
-        version: 1,
+        version: 2,
         exportDate: new Date().toISOString(),
         trades: trades,
-        challenge: challenge,
         challengeSteps: challengeSteps,
+        challenges: allChallenges,
+        simInputsPerStep: allSimInputs,
+        challenge: challenge, // backward compat
+        simInputs: JSON.parse(localStorage.getItem(getSimStorageKey()) || '{}'),
         settings: {
           notes: document.getElementById('setting-notes').value || ''
-        },
-        simInputs: JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}')
+        }
       };
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -2602,13 +2636,25 @@
     }
 
     function exportPropSettings() {
+      saveChallenge();
+      saveSimInputs();
+      const allChallenges = {};
+      const allSimInputs = {};
+      [1, 2, 3].forEach(s => {
+        const ch = localStorage.getItem('hedgeChallenge_' + s);
+        if (ch) allChallenges[s] = JSON.parse(ch);
+        const si = localStorage.getItem('hedgeSimInputs_' + s);
+        if (si) allSimInputs[s] = JSON.parse(si);
+      });
       const data = {
         type: 'prop-settings',
-        version: 1,
+        version: 2,
         exportDate: new Date().toISOString(),
         challengeSteps: challengeSteps,
+        challenges: allChallenges,
+        simInputsPerStep: allSimInputs,
         challenge: challenge,
-        simInputs: JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}')
+        simInputs: JSON.parse(localStorage.getItem(getSimStorageKey()) || '{}')
       };
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -2628,7 +2674,7 @@
       reader.onload = function(e) {
         try {
           const data = JSON.parse(e.target.result);
-          if (!data.challenge) {
+          if (!data.challenge && !data.challenges) {
             showToast('Invalid file: no challenge settings found.', true);
             return;
           }
@@ -2636,29 +2682,44 @@
             return;
           }
 
-          // Restore challenge steps
+          // v2 format: per-step data
+          if (data.challenges) {
+            Object.keys(data.challenges).forEach(s => {
+              localStorage.setItem('hedgeChallenge_' + s, JSON.stringify(data.challenges[s]));
+            });
+          }
+          if (data.simInputsPerStep) {
+            Object.keys(data.simInputsPerStep).forEach(s => {
+              localStorage.setItem('hedgeSimInputs_' + s, JSON.stringify(data.simInputsPerStep[s]));
+            });
+          }
+
+          // Restore step count and load the right challenge
           if (data.challengeSteps) {
-            setChallengeSteps(data.challengeSteps);
+            challengeSteps = data.challengeSteps;
+            localStorage.setItem('hedgeChallengeSteps', challengeSteps);
+            document.getElementById('challenge-steps').value = challengeSteps;
           }
 
-          // Restore challenge data
-          Object.assign(challenge, data.challenge);
+          // Load challenge for current step count
+          challenge = JSON.parse(localStorage.getItem(getChallengeStorageKey()) || '{}');
+
+          // v1 fallback: single challenge object
+          if (!data.challenges && data.challenge) {
+            Object.assign(challenge, data.challenge);
+            localStorage.setItem(getChallengeStorageKey(), JSON.stringify(challenge));
+          }
+          if (!data.simInputsPerStep && data.simInputs) {
+            localStorage.setItem(getSimStorageKey(), JSON.stringify(data.simInputs));
+          }
+
           currentPhase = challenge.phase || 'phase1';
-          localStorage.setItem('hedgeChallenge', JSON.stringify(challenge));
-
-          // Restore sim inputs
-          if (data.simInputs) {
-            localStorage.setItem('hedgeSimInputs', JSON.stringify(data.simInputs));
-            const goalKey = 'fundedGoal_' + challengeSteps;
-            const goalVal = data.simInputs[goalKey] || data.simInputs.fundedGoal;
-            if (goalVal) document.getElementById('sim-funded-goal').value = goalVal;
-            document.getElementById('sim-refund').value = data.simInputs.refund ? 'yes' : 'no';
-          }
 
           // Force rebuild sim inputs
           document.getElementById('sim-recover-inputs').dataset.steps = '0';
 
           buildPhaseTabs();
+          loadChallengeFields();
           setPhase(currentPhase);
           showToast('Prop firm settings imported successfully.');
         } catch (err) {
@@ -2685,29 +2746,50 @@
           }
           trades = data.trades;
           saveTrades();
+
+          // v2 format: per-step data
+          if (data.challenges) {
+            Object.keys(data.challenges).forEach(s => {
+              localStorage.setItem('hedgeChallenge_' + s, JSON.stringify(data.challenges[s]));
+            });
+          }
+          if (data.simInputsPerStep) {
+            Object.keys(data.simInputsPerStep).forEach(s => {
+              localStorage.setItem('hedgeSimInputs_' + s, JSON.stringify(data.simInputsPerStep[s]));
+            });
+          }
+
           if (data.challengeSteps) {
-            setChallengeSteps(data.challengeSteps);
+            challengeSteps = data.challengeSteps;
+            localStorage.setItem('hedgeChallengeSteps', challengeSteps);
+            document.getElementById('challenge-steps').value = challengeSteps;
           }
-          if (data.challenge) {
+
+          challenge = JSON.parse(localStorage.getItem(getChallengeStorageKey()) || '{}');
+
+          // v1 fallback
+          if (!data.challenges && data.challenge) {
             Object.assign(challenge, data.challenge);
-            currentPhase = challenge.phase || 'phase1';
-            localStorage.setItem('hedgeChallenge', JSON.stringify(challenge));
-            setPhase(currentPhase);
+            localStorage.setItem(getChallengeStorageKey(), JSON.stringify(challenge));
           }
+          if (!data.simInputsPerStep && data.simInputs) {
+            localStorage.setItem(getSimStorageKey(), JSON.stringify(data.simInputs));
+          }
+
+          currentPhase = challenge.phase || 'phase1';
+
           if (data.settings && data.settings.notes) {
             document.getElementById('setting-notes').value = data.settings.notes;
           }
-          if (data.simInputs) {
-            const goalKey = 'fundedGoal_' + challengeSteps;
-            const goalVal = data.simInputs[goalKey] || data.simInputs.fundedGoal;
-            if (goalVal) document.getElementById('sim-funded-goal').value = goalVal;
-            document.getElementById('sim-refund').value = data.simInputs.refund ? 'yes' : 'no';
-            localStorage.setItem('hedgeSimInputs', JSON.stringify(data.simInputs));
-          }
+
+          document.getElementById('sim-recover-inputs').dataset.steps = '0';
+          buildPhaseTabs();
+          loadChallengeFields();
           renderTrades();
           updateStats();
           updateChallenge();
           updateBankrollSim();
+          updateHedgeLotInfo();
           showToast(`Imported ${trades.length} trades successfully.`);
         } catch (err) {
           showToast('Failed to parse JSON file: ' + err.message, true);
@@ -2797,7 +2879,7 @@
 
         // Restore saved values into newly created inputs
         try {
-          const simData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}');
+          const simData = JSON.parse(localStorage.getItem(getSimStorageKey()) || localStorage.getItem('hedgeSimInputs') || '{}');
           const setVal = (id, key) => { const el = document.getElementById(id); if (el && simData[key]) el.value = simData[key]; };
           for (let i = 1; i <= 3; i++) setVal('sim-p' + i + '-net-input', 'p' + i + 'NetCustom');
           setVal('sim-funded-net-input', 'fundedNetCustom');
@@ -2832,14 +2914,14 @@
       const fundedNet = fundedNetVal !== '' ? parseFloat(fundedNetVal) || 0 : 0;
       const fundedRecover = fundedNet + challengeCost + cumulativeLoss;
 
-      // Save sim inputs (funded goal saved per step count)
+      // Save sim inputs per step count
       let saveData;
-      try { saveData = JSON.parse(localStorage.getItem('hedgeSimInputs') || '{}'); } catch(e) { saveData = {}; }
+      try { saveData = JSON.parse(localStorage.getItem(getSimStorageKey()) || '{}'); } catch(e) { saveData = {}; }
       saveData.refund = refund;
-      saveData['fundedGoal_' + steps] = fundedGoal;
+      saveData.fundedGoal = fundedGoal;
       saveData.fundedNetCustom = fundedNetVal;
       for (let i = 1; i <= 3; i++) saveData['p' + i + 'NetCustom'] = getInputVal('sim-p' + i + '-net-input');
-      localStorage.setItem('hedgeSimInputs', JSON.stringify(saveData));
+      localStorage.setItem(getSimStorageKey(), JSON.stringify(saveData));
 
       // Total Funds Needed: only the highest single recover amount is needed at any time
       // (since you deposit per phase, not all at once). But total capital at risk = sum of all.
