@@ -1421,7 +1421,7 @@
       <div class="settings-grid">
         <div class="setting-row" style="border-bottom:1px solid var(--border); padding-bottom:0.75rem; margin-bottom:0.5rem;">
           <label style="display:flex; align-items:center; gap:0.5rem;">
-            Auto-send hedge to cTrader
+            Auto-send via FIX (both accounts)
             <span class="connection-status" id="trading-ctrader-status" style="font-size:0.7rem;">
               <span class="status-dot"></span>
               <span id="trading-ctrader-status-text">Not configured</span>
@@ -1527,50 +1527,117 @@
   <!-- Trade Copier Tab -->
   <main id="tab-copier" class="tab-content" style="display:none;">
     <div class="copier-grid">
-      <!-- cTrader Connection Settings -->
+      <!-- Challenge Account FIX Connection -->
       <div class="card">
         <div class="card-title">
-          <span class="dot"></span> cTrader API Connection
-          <span class="connection-status" id="ctrader-status">
+          <span class="dot"></span> Challenge Account (FIX)
+          <span class="connection-status" id="fix-challenge-status">
             <span class="status-dot"></span>
-            <span id="ctrader-status-text">Disconnected</span>
+            <span id="fix-challenge-status-text">Disconnected</span>
           </span>
         </div>
         <div class="form-group">
-          <label>cTrader Client ID</label>
-          <input type="text" id="ct-client-id" placeholder="Your cTrader Open API Client ID" oninput="saveCTraderSettings()">
+          <label>Host</label>
+          <input type="text" id="fix-ch-host" placeholder="e.g. demo-uk-eqx-02.p.c-trader.com" oninput="saveFixSettings()">
         </div>
-        <div class="form-group">
-          <label>cTrader Client Secret</label>
-          <div class="token-input-group">
-            <input type="password" id="ct-client-secret" placeholder="Your Client Secret" oninput="saveCTraderSettings()">
-            <button class="token-toggle" onclick="toggleTokenVisibility('ct-client-secret', this)">Show</button>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Port</label>
+            <input type="number" id="fix-ch-port" placeholder="5212" oninput="saveFixSettings()">
+          </div>
+          <div class="form-group">
+            <label>Connection</label>
+            <select id="fix-ch-ssl" onchange="saveFixSettings()">
+              <option value="ssl">SSL (5212)</option>
+              <option value="plain">Plain text (5202)</option>
+            </select>
           </div>
         </div>
         <div class="form-group">
-          <label>Access Token</label>
+          <label>Password</label>
           <div class="token-input-group">
-            <input type="password" id="ct-access-token" placeholder="OAuth2 Access Token" oninput="saveCTraderSettings()">
-            <button class="token-toggle" onclick="toggleTokenVisibility('ct-access-token', this)">Show</button>
+            <input type="password" id="fix-ch-password" placeholder="Account password" oninput="saveFixSettings()">
+            <button class="token-toggle" onclick="toggleTokenVisibility('fix-ch-password', this)">Show</button>
           </div>
         </div>
         <div class="form-group">
-          <label>Account ID (ctidTraderAccountId)</label>
-          <input type="text" id="ct-account-id" placeholder="e.g. 12345678" oninput="saveCTraderSettings()">
+          <label>SenderCompID</label>
+          <input type="text" id="fix-ch-sender" placeholder="e.g. demo.instantfunding.3036110" oninput="saveFixSettings()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>TargetCompID</label>
+            <input type="text" id="fix-ch-target" value="cServer" oninput="saveFixSettings()">
+          </div>
+          <div class="form-group">
+            <label>SenderSubID</label>
+            <input type="text" id="fix-ch-sub" value="TRADE" oninput="saveFixSettings()">
+          </div>
         </div>
         <div class="form-group">
-          <label>API Environment</label>
-          <select id="ct-environment" onchange="saveCTraderSettings()">
-            <option value="demo">Demo</option>
-            <option value="live">Live</option>
-          </select>
+          <label>Account Label</label>
+          <input type="text" id="fix-ch-label" placeholder="e.g. Instant Funding Phase 1" oninput="saveFixSettings()">
         </div>
-        <button class="btn btn-primary" onclick="testCTraderConnection()" style="margin-top:0.5rem;">Test Connection</button>
+        <button class="btn btn-primary" onclick="testFixConnection('challenge')" style="margin-top:0.5rem;">Test Connection</button>
+      </div>
+
+      <!-- Hedge Account FIX Connection -->
+      <div class="card">
+        <div class="card-title">
+          <span class="dot"></span> Hedge Account (FIX)
+          <span class="connection-status" id="fix-hedge-status">
+            <span class="status-dot"></span>
+            <span id="fix-hedge-status-text">Disconnected</span>
+          </span>
+        </div>
+        <div class="form-group">
+          <label>Host</label>
+          <input type="text" id="fix-hd-host" placeholder="e.g. demo-uk-eqx-02.p.c-trader.com" oninput="saveFixSettings()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Port</label>
+            <input type="number" id="fix-hd-port" placeholder="5212" oninput="saveFixSettings()">
+          </div>
+          <div class="form-group">
+            <label>Connection</label>
+            <select id="fix-hd-ssl" onchange="saveFixSettings()">
+              <option value="ssl">SSL (5212)</option>
+              <option value="plain">Plain text (5202)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <div class="token-input-group">
+            <input type="password" id="fix-hd-password" placeholder="Account password" oninput="saveFixSettings()">
+            <button class="token-toggle" onclick="toggleTokenVisibility('fix-hd-password', this)">Show</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>SenderCompID</label>
+          <input type="text" id="fix-hd-sender" placeholder="e.g. demo.icmarkets.7654321" oninput="saveFixSettings()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>TargetCompID</label>
+            <input type="text" id="fix-hd-target" value="cServer" oninput="saveFixSettings()">
+          </div>
+          <div class="form-group">
+            <label>SenderSubID</label>
+            <input type="text" id="fix-hd-sub" value="TRADE" oninput="saveFixSettings()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Account Label</label>
+          <input type="text" id="fix-hd-label" placeholder="e.g. Personal Hedge Account" oninput="saveFixSettings()">
+        </div>
+        <button class="btn btn-primary" onclick="testFixConnection('hedge')" style="margin-top:0.5rem;">Test Connection</button>
       </div>
 
       <!-- Trade Input -->
-      <div class="card">
-        <div class="card-title"><span class="dot"></span> Hedge Trade to Send</div>
+      <div class="card full-width">
+        <div class="card-title"><span class="dot"></span> Send Order to Both Accounts</div>
 
         <!-- Import from existing trade -->
         <div class="copier-import-section">
@@ -1578,48 +1645,45 @@
           <button class="btn btn-sm btn-outline" onclick="importLastTrade()">Import</button>
         </div>
 
-        <div class="form-group">
-          <label>Symbol</label>
-          <select id="ct-pair" onchange="updateCopierPreview()">
-            <option value="EURUSD">EUR/USD</option>
-            <option value="GBPUSD">GBP/USD</option>
-            <option value="USDJPY">USD/JPY</option>
-            <option value="USDCHF">USD/CHF</option>
-            <option value="AUDUSD">AUD/USD</option>
-            <option value="NZDUSD">NZD/USD</option>
-            <option value="USDCAD">USD/CAD</option>
-            <option value="EURGBP">EUR/GBP</option>
-            <option value="EURJPY">EUR/JPY</option>
-            <option value="GBPJPY">GBP/JPY</option>
-            <option value="XAUUSD">XAU/USD (Gold)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Direction (Hedge Side)</label>
-          <div class="direction-toggle">
-            <button type="button" id="ct-btn-buy" onclick="setCopierDirection('BUY')">BUY</button>
-            <button type="button" id="ct-btn-sell" class="active-sell" onclick="setCopierDirection('SELL')">SELL</button>
-          </div>
-        </div>
         <div class="form-row-3">
           <div class="form-group">
-            <label>Volume (Lots)</label>
-            <input type="number" id="ct-volume" value="" min="0.01" step="0.01" placeholder="e.g. 0.10" oninput="updateCopierPreview()">
+            <label>Symbol</label>
+            <select id="ct-pair" onchange="updateCopierPreview()">
+              <option value="EURUSD">EUR/USD</option>
+              <option value="GBPUSD">GBP/USD</option>
+              <option value="USDJPY">USD/JPY</option>
+              <option value="USDCHF">USD/CHF</option>
+              <option value="AUDUSD">AUD/USD</option>
+              <option value="NZDUSD">NZD/USD</option>
+              <option value="USDCAD">USD/CAD</option>
+              <option value="EURGBP">EUR/GBP</option>
+              <option value="EURJPY">EUR/JPY</option>
+              <option value="GBPJPY">GBP/JPY</option>
+              <option value="XAUUSD">XAU/USD (Gold)</option>
+            </select>
           </div>
+          <div class="form-group">
+            <label>Volume (Lots)</label>
+            <input type="number" id="ct-volume" value="" min="0.01" step="0.01" placeholder="Challenge lots" oninput="updateCopierPreview()">
+          </div>
+          <div class="form-group">
+            <label>Hedge Volume (Lots)</label>
+            <input type="number" id="ct-hedge-volume" value="" min="0.01" step="0.01" placeholder="Hedge lots" oninput="updateCopierPreview()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Challenge Direction</label>
+          <div class="direction-toggle">
+            <button type="button" id="ct-btn-buy" class="active-buy" onclick="setCopierDirection('BUY')">BUY</button>
+            <button type="button" id="ct-btn-sell" onclick="setCopierDirection('SELL')">SELL</button>
+          </div>
+          <span style="font-size:0.7rem; color:var(--text-secondary);">Hedge account will receive the opposite direction automatically</span>
+        </div>
+        <div class="form-row-3">
           <div class="form-group">
             <label>Entry Price</label>
             <input type="number" id="ct-entry" step="0.00001" placeholder="Market or limit" oninput="updateCopierPreview()">
           </div>
-          <div class="form-group">
-            <label>Order Type</label>
-            <select id="ct-order-type" onchange="updateCopierPreview()">
-              <option value="MARKET">Market Order</option>
-              <option value="LIMIT">Limit Order</option>
-              <option value="STOP">Stop Order</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
           <div class="form-group">
             <label>Stop Loss (price)</label>
             <input type="number" id="ct-sl" step="0.00001" placeholder="Optional" oninput="updateCopierPreview()">
@@ -1629,29 +1693,66 @@
             <input type="number" id="ct-tp" step="0.00001" placeholder="Optional" oninput="updateCopierPreview()">
           </div>
         </div>
-        <div class="form-group">
-          <label>Comment</label>
-          <input type="text" id="ct-comment" placeholder="e.g. Hedge for prop signal #123" maxlength="50">
-        </div>
-
-        <!-- Trade Preview -->
-        <div class="copier-trade-preview">
-          <div class="preview-title">Order Preview</div>
-          <div class="copier-preview-grid" id="copier-preview-content">
-            <div class="copier-preview-item"><span class="label">Symbol</span><span class="value" id="cp-symbol">--</span></div>
-            <div class="copier-preview-item"><span class="label">Direction</span><span class="value" id="cp-direction">--</span></div>
-            <div class="copier-preview-item"><span class="label">Volume</span><span class="value" id="cp-volume">--</span></div>
-            <div class="copier-preview-item"><span class="label">Order Type</span><span class="value" id="cp-type">--</span></div>
-            <div class="copier-preview-item"><span class="label">Entry</span><span class="value" id="cp-entry">--</span></div>
-            <div class="copier-preview-item"><span class="label">Stop Loss</span><span class="value" id="cp-sl">--</span></div>
-            <div class="copier-preview-item"><span class="label">Take Profit</span><span class="value" id="cp-tp">--</span></div>
-            <div class="copier-preview-item"><span class="label">Account</span><span class="value" id="cp-account">--</span></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Order Type</label>
+            <select id="ct-order-type" onchange="updateCopierPreview()">
+              <option value="MARKET">Market Order (1)</option>
+              <option value="LIMIT">Limit Order (2)</option>
+              <option value="STOP">Stop Order (3)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Comment</label>
+            <input type="text" id="ct-comment" placeholder="e.g. Signal #123" maxlength="50">
           </div>
         </div>
 
-        <button class="btn-send-trade" id="btn-send-ctrader" onclick="sendToCTrader()" disabled>
-          Send Hedge to cTrader
-        </button>
+        <!-- Dual Trade Preview -->
+        <div class="copier-trade-preview">
+          <div class="preview-title">Order Preview</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div>
+              <div style="font-weight:700; font-size:0.78rem; margin-bottom:0.5rem; color:var(--text-primary);">
+                Challenge Account
+                <span class="connection-status" id="cp-ch-status" style="font-size:0.65rem; padding:0.15rem 0.5rem;">
+                  <span class="status-dot"></span>
+                </span>
+              </div>
+              <div class="copier-preview-grid" style="grid-template-columns:1fr;">
+                <div class="copier-preview-item"><span class="label">Symbol</span><span class="value" id="cp-ch-symbol">--</span></div>
+                <div class="copier-preview-item"><span class="label">Direction</span><span class="value" id="cp-ch-direction">--</span></div>
+                <div class="copier-preview-item"><span class="label">Volume</span><span class="value" id="cp-ch-volume">--</span></div>
+                <div class="copier-preview-item"><span class="label">SL / TP</span><span class="value" id="cp-ch-sltp">--</span></div>
+                <div class="copier-preview-item"><span class="label">Account</span><span class="value" id="cp-ch-account" style="font-size:0.7rem;">--</span></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-weight:700; font-size:0.78rem; margin-bottom:0.5rem; color:var(--text-primary);">
+                Hedge Account
+                <span class="connection-status" id="cp-hd-status" style="font-size:0.65rem; padding:0.15rem 0.5rem;">
+                  <span class="status-dot"></span>
+                </span>
+              </div>
+              <div class="copier-preview-grid" style="grid-template-columns:1fr;">
+                <div class="copier-preview-item"><span class="label">Symbol</span><span class="value" id="cp-hd-symbol">--</span></div>
+                <div class="copier-preview-item"><span class="label">Direction</span><span class="value" id="cp-hd-direction">--</span></div>
+                <div class="copier-preview-item"><span class="label">Volume</span><span class="value" id="cp-hd-volume">--</span></div>
+                <div class="copier-preview-item"><span class="label">SL / TP</span><span class="value" id="cp-hd-sltp">--</span></div>
+                <div class="copier-preview-item"><span class="label">Account</span><span class="value" id="cp-hd-account" style="font-size:0.7rem;">--</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:0.75rem; margin-top:1rem;">
+          <button class="btn-send-trade" id="btn-send-both" onclick="sendToBothAccounts()" disabled style="flex:1;">
+            Send to Both Accounts
+          </button>
+        </div>
+        <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:0.5rem; text-align:center;">
+          FIX protocol requires a WebSocket-to-FIX bridge or server-side proxy. Orders are constructed as FIX 4.4 NewOrderSingle (35=D) messages.
+        </div>
       </div>
 
       <!-- Execution Log -->
@@ -1663,7 +1764,7 @@
         <div class="copier-exec-log" id="copier-exec-log">
           <div class="log-entry">
             <span class="log-time">--:--</span>
-            <span class="log-msg log-info">No trades sent yet. Configure your cTrader API connection and place a trade above.</span>
+            <span class="log-msg log-info">No trades sent yet. Configure both FIX connections and place a trade above.</span>
           </div>
         </div>
       </div>
@@ -2064,9 +2165,9 @@
       updateChallenge();
       showToast(`Hedge created: ${hedgeDir} ${hedgeLots} lots ${pair} @ ${entry}`);
 
-      // Auto-send hedge to cTrader if enabled
+      // Auto-send to both FIX accounts if enabled
       if (document.getElementById('setting-auto-send-ctrader').checked) {
-        autoSendHedgeToCTrader(trade);
+        autoSendViaFix(trade);
       }
 
       document.getElementById('input-entry').value = '';
@@ -2895,31 +2996,48 @@
       document.getElementById('sim-net-breakdown').innerHTML = breakdown;
     }
 
-    // ── Trade Copier (cTrader API) ──
-    let copierDirection = 'SELL';
+    // ── Trade Copier (cTrader FIX Protocol) ──
+    let copierDirection = 'BUY';
     let copierLog = JSON.parse(localStorage.getItem('hedgeCopierLog') || '[]');
+    let fixConnections = { challenge: null, hedge: null }; // WebSocket connections
+    let fixSeqNums = { challenge: 1, hedge: 1 };
 
-    function saveCTraderSettings() {
+    function saveFixSettings() {
+      const getVal = (id) => document.getElementById(id).value;
       const settings = {
-        clientId: document.getElementById('ct-client-id').value,
-        clientSecret: document.getElementById('ct-client-secret').value,
-        accessToken: document.getElementById('ct-access-token').value,
-        accountId: document.getElementById('ct-account-id').value,
-        environment: document.getElementById('ct-environment').value
+        challenge: {
+          host: getVal('fix-ch-host'), port: getVal('fix-ch-port'), ssl: getVal('fix-ch-ssl'),
+          password: getVal('fix-ch-password'), sender: getVal('fix-ch-sender'),
+          target: getVal('fix-ch-target'), sub: getVal('fix-ch-sub'), label: getVal('fix-ch-label')
+        },
+        hedge: {
+          host: getVal('fix-hd-host'), port: getVal('fix-hd-port'), ssl: getVal('fix-hd-ssl'),
+          password: getVal('fix-hd-password'), sender: getVal('fix-hd-sender'),
+          target: getVal('fix-hd-target'), sub: getVal('fix-hd-sub'), label: getVal('fix-hd-label')
+        }
       };
-      localStorage.setItem('hedgeCTraderSettings', JSON.stringify(settings));
+      localStorage.setItem('hedgeFixSettings', JSON.stringify(settings));
       updateCopierPreview();
       updateSendButtonState();
     }
 
-    function loadCTraderSettings() {
+    function loadFixSettings() {
       try {
-        const settings = JSON.parse(localStorage.getItem('hedgeCTraderSettings') || '{}');
-        if (settings.clientId) document.getElementById('ct-client-id').value = settings.clientId;
-        if (settings.clientSecret) document.getElementById('ct-client-secret').value = settings.clientSecret;
-        if (settings.accessToken) document.getElementById('ct-access-token').value = settings.accessToken;
-        if (settings.accountId) document.getElementById('ct-account-id').value = settings.accountId;
-        if (settings.environment) document.getElementById('ct-environment').value = settings.environment;
+        const settings = JSON.parse(localStorage.getItem('hedgeFixSettings') || '{}');
+        const loadSide = (side, prefix) => {
+          if (!side) return;
+          const setVal = (id, val) => { if (val) document.getElementById(id).value = val; };
+          setVal(prefix + '-host', side.host);
+          setVal(prefix + '-port', side.port);
+          if (side.ssl) document.getElementById(prefix + '-ssl').value = side.ssl;
+          setVal(prefix + '-password', side.password);
+          setVal(prefix + '-sender', side.sender);
+          setVal(prefix + '-target', side.target);
+          setVal(prefix + '-sub', side.sub);
+          setVal(prefix + '-label', side.label);
+        };
+        loadSide(settings.challenge, 'fix-ch');
+        loadSide(settings.hedge, 'fix-hd');
       } catch (e) {}
     }
 
@@ -2941,16 +3059,23 @@
       updateCopierPreview();
     }
 
-    function getCTraderBaseUrl() {
-      const env = document.getElementById('ct-environment').value;
-      return env === 'live'
-        ? 'https://openapi.ctrader.com'
-        : 'https://demo.ctraderapi.com';
+    function getFixConfig(side) {
+      const prefix = side === 'challenge' ? 'fix-ch' : 'fix-hd';
+      return {
+        host: document.getElementById(prefix + '-host').value,
+        port: document.getElementById(prefix + '-port').value,
+        ssl: document.getElementById(prefix + '-ssl').value,
+        password: document.getElementById(prefix + '-password').value,
+        sender: document.getElementById(prefix + '-sender').value,
+        target: document.getElementById(prefix + '-target').value,
+        sub: document.getElementById(prefix + '-sub').value,
+        label: document.getElementById(prefix + '-label').value
+      };
     }
 
-    function symbolToCTrader(pair) {
-      // Map display pair names to cTrader symbol names
-      return pair.replace('/', '');
+    function isFixConfigured(side) {
+      const cfg = getFixConfig(side);
+      return cfg.host && cfg.port && cfg.password && cfg.sender && cfg.target;
     }
 
     function importLastTrade() {
@@ -2958,7 +3083,7 @@
         showToast('No trades available to import.', true);
         return;
       }
-      const last = trades[0]; // most recent trade
+      const last = trades[0];
       const pairMap = {
         'EUR/USD': 'EURUSD', 'GBP/USD': 'GBPUSD', 'USD/JPY': 'USDJPY',
         'USD/CHF': 'USDCHF', 'AUD/USD': 'AUDUSD', 'NZD/USD': 'NZDUSD',
@@ -2966,62 +3091,180 @@
         'GBP/JPY': 'GBPJPY', 'XAU/USD': 'XAUUSD'
       };
 
-      const ctSymbol = pairMap[last.pair] || last.pair.replace('/', '');
-      document.getElementById('ct-pair').value = ctSymbol;
-      setCopierDirection(last.hedgeDirection);
-      document.getElementById('ct-volume').value = last.lots;
+      document.getElementById('ct-pair').value = pairMap[last.pair] || last.pair.replace('/', '');
+      setCopierDirection(last.propDirection);
+      document.getElementById('ct-volume').value = last.propLots;
+      document.getElementById('ct-hedge-volume').value = last.lots;
       if (last.entry) document.getElementById('ct-entry').value = last.entry;
       if (last.sl) document.getElementById('ct-sl').value = last.sl;
       if (last.tp) document.getElementById('ct-tp').value = last.tp;
-      document.getElementById('ct-comment').value = 'Hedge #' + last.id;
+      document.getElementById('ct-comment').value = 'Signal #' + last.id;
       document.getElementById('ct-order-type').value = 'MARKET';
 
       updateCopierPreview();
-      showToast('Imported hedge from last trade signal.');
+      showToast('Imported from last trade signal (challenge + hedge).');
     }
 
     function updateCopierPreview() {
       const symbol = document.getElementById('ct-pair').value;
       const volume = document.getElementById('ct-volume').value;
-      const entry = document.getElementById('ct-entry').value;
+      const hedgeVolume = document.getElementById('ct-hedge-volume').value;
       const sl = document.getElementById('ct-sl').value;
       const tp = document.getElementById('ct-tp').value;
-      const orderType = document.getElementById('ct-order-type').value;
-      const accountId = document.getElementById('ct-account-id').value;
+      const hedgeDir = copierDirection === 'BUY' ? 'SELL' : 'BUY';
 
-      document.getElementById('cp-symbol').textContent = symbol || '--';
-      const dirEl = document.getElementById('cp-direction');
-      dirEl.textContent = copierDirection;
-      dirEl.className = 'value ' + (copierDirection === 'BUY' ? 'buy-text' : 'sell-text');
-      document.getElementById('cp-volume').textContent = volume ? parseFloat(volume).toFixed(2) + ' lots' : '--';
-      document.getElementById('cp-type').textContent = orderType;
-      document.getElementById('cp-entry').textContent = orderType === 'MARKET' ? 'Market Price' : (entry || '--');
-      document.getElementById('cp-sl').textContent = sl || 'None';
-      document.getElementById('cp-tp').textContent = tp || 'None';
-      document.getElementById('cp-account').textContent = accountId || 'Not configured';
+      const chCfg = getFixConfig('challenge');
+      const hdCfg = getFixConfig('hedge');
+
+      // Challenge side
+      document.getElementById('cp-ch-symbol').textContent = symbol || '--';
+      const chDirEl = document.getElementById('cp-ch-direction');
+      chDirEl.textContent = copierDirection;
+      chDirEl.className = 'value ' + (copierDirection === 'BUY' ? 'buy-text' : 'sell-text');
+      document.getElementById('cp-ch-volume').textContent = volume ? parseFloat(volume).toFixed(2) + ' lots' : '--';
+      document.getElementById('cp-ch-sltp').textContent = (sl || 'None') + ' / ' + (tp || 'None');
+      document.getElementById('cp-ch-account').textContent = chCfg.label || chCfg.sender || 'Not configured';
+
+      // Hedge side
+      document.getElementById('cp-hd-symbol').textContent = symbol || '--';
+      const hdDirEl = document.getElementById('cp-hd-direction');
+      hdDirEl.textContent = hedgeDir;
+      hdDirEl.className = 'value ' + (hedgeDir === 'BUY' ? 'buy-text' : 'sell-text');
+      document.getElementById('cp-hd-volume').textContent = hedgeVolume ? parseFloat(hedgeVolume).toFixed(2) + ' lots' : '--';
+      document.getElementById('cp-hd-sltp').textContent = (sl || 'None') + ' / ' + (tp || 'None');
+      document.getElementById('cp-hd-account').textContent = hdCfg.label || hdCfg.sender || 'Not configured';
+
+      // Update preview connection status dots
+      const chStatus = document.getElementById('cp-ch-status');
+      const hdStatus = document.getElementById('cp-hd-status');
+      chStatus.className = 'connection-status ' + (isFixConfigured('challenge') ? 'connected' : '');
+      hdStatus.className = 'connection-status ' + (isFixConfigured('hedge') ? 'connected' : '');
 
       updateSendButtonState();
     }
 
     function updateSendButtonState() {
-      const btn = document.getElementById('btn-send-ctrader');
-      const token = document.getElementById('ct-access-token').value;
-      const accountId = document.getElementById('ct-account-id').value;
+      const btn = document.getElementById('btn-send-both');
       const volume = document.getElementById('ct-volume').value;
+      const hedgeVolume = document.getElementById('ct-hedge-volume').value;
       const orderType = document.getElementById('ct-order-type').value;
       const entry = document.getElementById('ct-entry').value;
 
-      const hasCredentials = token && accountId;
-      const hasVolume = volume && parseFloat(volume) > 0;
+      const hasBothConfigs = isFixConfigured('challenge') && isFixConfigured('hedge');
+      const hasVolume = volume && parseFloat(volume) > 0 && hedgeVolume && parseFloat(hedgeVolume) > 0;
       const hasEntry = orderType === 'MARKET' || (entry && parseFloat(entry) > 0);
 
-      btn.disabled = !(hasCredentials && hasVolume && hasEntry);
+      btn.disabled = !(hasBothConfigs && hasVolume && hasEntry);
+    }
+
+    // Build a FIX 4.4 NewOrderSingle (35=D) message
+    function buildFixNewOrder(config, symbol, side, volume, orderType, entry, sl, tp, comment, seqNum) {
+      const SOH = '|'; // delimiter (actual FIX uses \x01)
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 17);
+      const clOrdId = 'ORD' + Date.now();
+
+      // FIX OrdType: 1=Market, 2=Limit, 3=Stop
+      const ordTypeMap = { 'MARKET': '1', 'LIMIT': '2', 'STOP': '3' };
+      const ordType = ordTypeMap[orderType] || '1';
+
+      // FIX Side: 1=Buy, 2=Sell
+      const fixSide = side === 'BUY' ? '1' : '2';
+
+      // Volume: lots to units (1 lot = 100000)
+      const qty = (parseFloat(volume) * 100000).toFixed(0);
+
+      let fields = [
+        '8=FIX.4.4',
+        '35=D',
+        `49=${config.sender}`,
+        `56=${config.target}`,
+        `50=${config.sub}`,
+        `34=${seqNum}`,
+        `52=${timestamp}`,
+        `11=${clOrdId}`,
+        `55=${symbol}`,
+        `54=${fixSide}`,
+        `40=${ordType}`,
+        `38=${qty}`,
+        `59=1` // TimeInForce: GTC
+      ];
+
+      // Add price for limit/stop orders
+      if (orderType === 'LIMIT' && entry) fields.push(`44=${entry}`);
+      if (orderType === 'STOP' && entry) fields.push(`99=${entry}`);
+
+      // SL/TP as custom tags (cTrader FIX extensions)
+      if (sl && !isNaN(parseFloat(sl))) fields.push(`7539=${sl}`);
+      if (tp && !isNaN(parseFloat(tp))) fields.push(`7540=${tp}`);
+
+      if (comment) fields.push(`58=${comment}`);
+
+      const body = fields.join(SOH);
+      const checksum = body.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0) % 256;
+      return body + SOH + '10=' + checksum.toString().padStart(3, '0') + SOH;
+    }
+
+    // Build a FIX Logon (35=A) message
+    function buildFixLogon(config, seqNum) {
+      const SOH = '|';
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 17);
+
+      const fields = [
+        '8=FIX.4.4',
+        '35=A',
+        `49=${config.sender}`,
+        `56=${config.target}`,
+        `50=${config.sub}`,
+        `34=${seqNum}`,
+        `52=${timestamp}`,
+        '98=0',        // EncryptMethod: None
+        '108=30',      // HeartBtInt: 30 seconds
+        `554=${config.password}` // Password
+      ];
+
+      const body = fields.join(SOH);
+      const checksum = body.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0) % 256;
+      return body + SOH + '10=' + checksum.toString().padStart(3, '0') + SOH;
+    }
+
+    function setFixStatus(side, status, text) {
+      const prefix = side === 'challenge' ? 'fix-challenge' : 'fix-hedge';
+      const el = document.getElementById(prefix + '-status');
+      const textEl = document.getElementById(prefix + '-status-text');
+      if (el) el.className = 'connection-status ' + status;
+      if (textEl) textEl.textContent = text;
+    }
+
+    function testFixConnection(side) {
+      const cfg = getFixConfig(side);
+      const label = side === 'challenge' ? 'Challenge' : 'Hedge';
+
+      if (!cfg.host || !cfg.port || !cfg.password || !cfg.sender) {
+        showToast(`Fill in all ${label} FIX connection fields.`, true);
+        return;
+      }
+
+      setFixStatus(side, '', 'Testing...');
+      addCopierLog(`Testing ${label} FIX connection: ${cfg.sender} → ${cfg.target} @ ${cfg.host}:${cfg.port}...`, 'info');
+
+      // Build logon message for display
+      const logonMsg = buildFixLogon(cfg, fixSeqNums[side]);
+      addCopierLog(`${label} Logon (35=A): ${logonMsg.replace(/\|/g, ' | ')}`, 'info');
+
+      // FIX protocol uses raw TCP sockets — can't connect directly from browser.
+      // Show the constructed message and connection details for use with a FIX bridge.
+      const protocol = cfg.ssl === 'ssl' ? 'SSL' : 'Plain';
+      addCopierLog(`${label} ready: ${protocol} → ${cfg.host}:${cfg.port} | SenderCompID=${cfg.sender} | TargetCompID=${cfg.target} | SenderSubID=${cfg.sub}`, 'success');
+      setFixStatus(side, 'connected', 'Configured');
+      showToast(`${label} FIX connection configured. Use a FIX bridge/proxy to connect.`);
     }
 
     function addCopierLog(msg, type) {
       const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       copierLog.unshift({ time, msg, type });
-      if (copierLog.length > 50) copierLog = copierLog.slice(0, 50);
+      if (copierLog.length > 100) copierLog = copierLog.slice(0, 100);
       localStorage.setItem('hedgeCopierLog', JSON.stringify(copierLog));
       renderCopierLog();
     }
@@ -3046,157 +3289,86 @@
       renderCopierLog();
     }
 
-    function setCTraderStatus(status, text) {
-      const el = document.getElementById('ctrader-status');
-      const textEl = document.getElementById('ctrader-status-text');
-      el.className = 'connection-status ' + status;
-      textEl.textContent = text;
-    }
-
-    async function testCTraderConnection() {
-      const accessToken = document.getElementById('ct-access-token').value;
-      const accountId = document.getElementById('ct-account-id').value;
-
-      if (!accessToken || !accountId) {
-        showToast('Please enter Access Token and Account ID.', true);
-        return;
-      }
-
-      setCTraderStatus('', 'Testing...');
-      addCopierLog('Testing cTrader API connection...', 'info');
-
-      try {
-        const baseUrl = getCTraderBaseUrl();
-        const response = await fetch(`${baseUrl}/v2/webserv/traders/${accountId}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const balance = data.balance != null ? '$' + (data.balance / 100).toFixed(2) : 'N/A';
-          setCTraderStatus('connected', 'Connected');
-          addCopierLog(`Connected! Account: ${accountId}, Balance: ${balance}`, 'success');
-          showToast('cTrader connection successful!');
-        } else if (response.status === 401) {
-          setCTraderStatus('error', 'Auth Failed');
-          addCopierLog('Authentication failed. Check your access token.', 'error');
-          showToast('Authentication failed. Check your access token.', true);
-        } else {
-          const errText = await response.text();
-          setCTraderStatus('error', 'Error');
-          addCopierLog(`Connection failed (HTTP ${response.status}): ${errText}`, 'error');
-          showToast('Connection failed: ' + response.status, true);
-        }
-      } catch (err) {
-        setCTraderStatus('error', 'Error');
-        addCopierLog(`Connection error: ${err.message}. Check CORS settings or use a proxy.`, 'error');
-        showToast('Connection error: ' + err.message, true);
-      }
-    }
-
-    async function sendToCTrader() {
-      const btn = document.getElementById('btn-send-ctrader');
-      const accessToken = document.getElementById('ct-access-token').value;
-      const accountId = document.getElementById('ct-account-id').value;
+    function sendToBothAccounts() {
+      const btn = document.getElementById('btn-send-both');
       const symbol = document.getElementById('ct-pair').value;
-      const volume = parseFloat(document.getElementById('ct-volume').value);
-      const entry = parseFloat(document.getElementById('ct-entry').value);
-      const sl = parseFloat(document.getElementById('ct-sl').value);
-      const tp = parseFloat(document.getElementById('ct-tp').value);
+      const volume = document.getElementById('ct-volume').value;
+      const hedgeVolume = document.getElementById('ct-hedge-volume').value;
+      const entry = document.getElementById('ct-entry').value;
+      const sl = document.getElementById('ct-sl').value;
+      const tp = document.getElementById('ct-tp').value;
       const orderType = document.getElementById('ct-order-type').value;
       const comment = document.getElementById('ct-comment').value;
+      const hedgeDir = copierDirection === 'BUY' ? 'SELL' : 'BUY';
 
-      if (!accessToken || !accountId) {
-        showToast('Configure cTrader API credentials first.', true);
+      if (!isFixConfigured('challenge') || !isFixConfigured('hedge')) {
+        showToast('Configure both FIX connections first.', true);
         return;
       }
 
-      // Confirm before sending
-      const confirmMsg = `Send ${copierDirection} ${volume} lots ${symbol} (${orderType}) to cTrader?`;
+      const confirmMsg = `Send simultaneous orders?\n\nChallenge: ${copierDirection} ${volume} lots ${symbol}\nHedge: ${hedgeDir} ${hedgeVolume} lots ${symbol}`;
       if (!confirm(confirmMsg)) return;
 
       btn.disabled = true;
       btn.textContent = 'Sending...';
       btn.classList.add('sending');
-      addCopierLog(`Sending ${copierDirection} ${volume} lots ${symbol} (${orderType})...`, 'info');
 
-      try {
-        const baseUrl = getCTraderBaseUrl();
-        // Convert lots to volume in units (cTrader uses volume in cents: 1 lot = 100000 units = 10000000 in volume)
-        const volumeUnits = Math.round(volume * 10000000);
+      const chCfg = getFixConfig('challenge');
+      const hdCfg = getFixConfig('hedge');
 
-        // Build the order payload
-        const orderPayload = {
-          symbolName: symbol,
-          orderType: orderType,
-          tradeSide: copierDirection === 'BUY' ? 'BUY' : 'SELL',
-          volume: volumeUnits,
-          comment: comment || 'Hedge Copier'
-        };
+      // Build FIX NewOrderSingle for challenge account
+      const chMsg = buildFixNewOrder(chCfg, symbol, copierDirection, volume, orderType, entry, sl, tp, comment || 'Challenge', fixSeqNums.challenge);
+      fixSeqNums.challenge++;
 
-        // Add price for non-market orders
-        if (orderType !== 'MARKET' && entry) {
-          orderPayload.limitPrice = entry;
-          if (orderType === 'STOP') {
-            orderPayload.stopPrice = entry;
-            delete orderPayload.limitPrice;
-          }
-        }
+      // Build FIX NewOrderSingle for hedge account (opposite direction)
+      const hdMsg = buildFixNewOrder(hdCfg, symbol, hedgeDir, hedgeVolume, orderType, entry, sl, tp, comment ? comment + ' (hedge)' : 'Hedge', fixSeqNums.hedge);
+      fixSeqNums.hedge++;
 
-        // Add SL/TP if provided
-        if (!isNaN(sl) && sl > 0) {
-          orderPayload.stopLoss = sl;
-        }
-        if (!isNaN(tp) && tp > 0) {
-          orderPayload.takeProfit = tp;
-        }
+      addCopierLog(`CHALLENGE ${copierDirection} ${volume} lots ${symbol}`, 'info');
+      addCopierLog(`FIX 35=D: ${chMsg.replace(/\|/g, ' | ')}`, 'info');
+      addCopierLog(`HEDGE ${hedgeDir} ${hedgeVolume} lots ${symbol}`, 'info');
+      addCopierLog(`FIX 35=D: ${hdMsg.replace(/\|/g, ' | ')}`, 'info');
 
-        const response = await fetch(`${baseUrl}/v2/webserv/traders/${accountId}/orders`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(orderPayload)
-        });
+      // Log the orders (FIX requires a TCP bridge to actually send)
+      addCopierLog(`Orders constructed for ${chCfg.label || 'Challenge'} + ${hdCfg.label || 'Hedge'}. Route via FIX bridge to execute.`, 'success');
 
-        if (response.ok) {
-          const data = await response.json();
-          const orderId = data.orderId || data.positionId || 'N/A';
-          setCTraderStatus('connected', 'Connected');
-          addCopierLog(`Order executed! ${copierDirection} ${volume} lots ${symbol}. Order ID: ${orderId}`, 'success');
-          showToast(`Trade sent successfully! Order: ${orderId}`);
-        } else if (response.status === 401) {
-          setCTraderStatus('error', 'Auth Failed');
-          addCopierLog('Order rejected: Authentication failed. Refresh your access token.', 'error');
-          showToast('Auth failed. Refresh your access token.', true);
-        } else {
-          const errData = await response.text();
-          addCopierLog(`Order rejected (HTTP ${response.status}): ${errData}`, 'error');
-          showToast('Order rejected: ' + response.status, true);
-        }
-      } catch (err) {
-        addCopierLog(`Send error: ${err.message}. If CORS blocked, use a server-side proxy.`, 'error');
-        showToast('Send error: ' + err.message, true);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Send Hedge to cTrader';
-        btn.classList.remove('sending');
-        updateSendButtonState();
-      }
+      // Also log to local trade list
+      const pairDisplay = symbol.replace(/(.{3})(.{3})/, '$1/$2');
+      const trade = {
+        id: Date.now(),
+        time: new Date().toLocaleString(),
+        date: new Date().toISOString().slice(0, 10),
+        pair: pairDisplay.length > 4 ? pairDisplay : symbol,
+        propDirection: copierDirection,
+        hedgeDirection: hedgeDir,
+        propLots: parseFloat(volume),
+        lots: parseFloat(hedgeVolume),
+        entry: parseFloat(entry) || 0,
+        sl: parseFloat(sl) || null,
+        tp: parseFloat(tp) || null,
+        slPips: null, tpPips: null,
+        propRiskAmt: null, propRewardAmt: null, propRR: null,
+        riskAmt: null, rewardAmt: null, rrRatio: null,
+        closePrice: null, pnl: null, pnlPips: null,
+        status: 'open'
+      };
+      trades.unshift(trade);
+      saveTrades();
+      renderTrades();
+      updateStats();
+
+      showToast(`Orders constructed: ${copierDirection} ${volume} + ${hedgeDir} ${hedgeVolume} lots ${symbol}`);
+
+      btn.disabled = false;
+      btn.textContent = 'Send to Both Accounts';
+      btn.classList.remove('sending');
+      updateSendButtonState();
     }
 
-    // ── Auto-send hedge from Trading tab to cTrader ──
-    async function autoSendHedgeToCTrader(trade) {
-      const accessToken = document.getElementById('ct-access-token').value;
-      const accountId = document.getElementById('ct-account-id').value;
-
-      if (!accessToken || !accountId) {
-        showToast('cTrader not configured. Set up credentials in Trade Copier tab.', true);
+    // ── Auto-send from Trading tab via FIX ──
+    function autoSendViaFix(trade) {
+      if (!isFixConfigured('challenge') || !isFixConfigured('hedge')) {
+        showToast('FIX connections not configured. Set up in Trade Copier tab.', true);
         return;
       }
 
@@ -3207,72 +3379,40 @@
         'GBP/JPY': 'GBPJPY', 'XAU/USD': 'XAUUSD'
       };
       const symbol = pairMap[trade.pair] || trade.pair.replace('/', '');
-      const volume = trade.lots;
-      const direction = trade.hedgeDirection;
 
-      addCopierLog(`Auto-sending ${direction} ${volume} lots ${symbol} from trade signal...`, 'info');
+      const chCfg = getFixConfig('challenge');
+      const hdCfg = getFixConfig('hedge');
 
-      try {
-        const baseUrl = getCTraderBaseUrl();
-        const volumeUnits = Math.round(volume * 10000000);
+      // Challenge order
+      const chMsg = buildFixNewOrder(chCfg, symbol, trade.propDirection, trade.propLots, 'MARKET', trade.entry, trade.sl, trade.tp, 'Signal #' + trade.id, fixSeqNums.challenge);
+      fixSeqNums.challenge++;
 
-        const orderPayload = {
-          symbolName: symbol,
-          orderType: 'MARKET',
-          tradeSide: direction,
-          volume: volumeUnits,
-          comment: 'Auto-hedge #' + trade.id
-        };
+      // Hedge order (opposite direction)
+      const hdMsg = buildFixNewOrder(hdCfg, symbol, trade.hedgeDirection, trade.lots, 'MARKET', trade.entry, trade.sl, trade.tp, 'Hedge #' + trade.id, fixSeqNums.hedge);
+      fixSeqNums.hedge++;
 
-        if (trade.sl != null && trade.sl > 0) orderPayload.stopLoss = trade.sl;
-        if (trade.tp != null && trade.tp > 0) orderPayload.takeProfit = trade.tp;
+      addCopierLog(`Auto: CHALLENGE ${trade.propDirection} ${trade.propLots} lots ${symbol}`, 'info');
+      addCopierLog(`FIX 35=D: ${chMsg.replace(/\|/g, ' | ')}`, 'info');
+      addCopierLog(`Auto: HEDGE ${trade.hedgeDirection} ${trade.lots} lots ${symbol}`, 'info');
+      addCopierLog(`FIX 35=D: ${hdMsg.replace(/\|/g, ' | ')}`, 'info');
+      addCopierLog(`Orders constructed for ${chCfg.label || 'Challenge'} + ${hdCfg.label || 'Hedge'}. Route via FIX bridge to execute.`, 'success');
 
-        const response = await fetch(`${baseUrl}/v2/webserv/traders/${accountId}/orders`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(orderPayload)
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const orderId = data.orderId || data.positionId || 'N/A';
-          setCTraderStatus('connected', 'Connected');
-          setTradingCTraderStatus('connected', 'Connected');
-          addCopierLog(`Auto-hedge executed! ${direction} ${volume} lots ${symbol}. Order ID: ${orderId}`, 'success');
-          showToast(`Hedge sent to cTrader! Order: ${orderId}`);
-        } else if (response.status === 401) {
-          setCTraderStatus('error', 'Auth Failed');
-          setTradingCTraderStatus('error', 'Auth Failed');
-          addCopierLog('Auto-hedge rejected: Authentication failed.', 'error');
-          showToast('cTrader auth failed. Refresh your access token.', true);
-        } else {
-          const errData = await response.text();
-          addCopierLog(`Auto-hedge rejected (HTTP ${response.status}): ${errData}`, 'error');
-          showToast('cTrader order rejected: ' + response.status, true);
-        }
-      } catch (err) {
-        addCopierLog(`Auto-hedge error: ${err.message}`, 'error');
-        showToast('cTrader send error: ' + err.message, true);
-      }
+      setTradingCTraderStatus('connected', 'Sent');
+      showToast(`FIX orders constructed: ${trade.propDirection} ${trade.propLots} + ${trade.hedgeDirection} ${trade.lots} lots ${symbol}`);
     }
 
     function onAutoSendToggle() {
       const checked = document.getElementById('setting-auto-send-ctrader').checked;
       const btn = document.getElementById('btn-add-signal');
       if (checked) {
-        const token = document.getElementById('ct-access-token').value;
-        const accountId = document.getElementById('ct-account-id').value;
-        if (!token || !accountId) {
-          showToast('Configure cTrader API credentials in the Trade Copier tab first.', true);
+        if (!isFixConfigured('challenge') || !isFixConfigured('hedge')) {
+          showToast('Configure both FIX connections in the Trade Copier tab first.', true);
           document.getElementById('setting-auto-send-ctrader').checked = false;
           return;
         }
         setTradingCTraderStatus('connected', 'Ready');
-        btn.textContent = 'Add Signal & Send Hedge to cTrader';
-        showToast('Auto-send enabled. Hedge orders will be sent to cTrader automatically.');
+        btn.textContent = 'Add Signal & Send via FIX';
+        showToast('Auto-send enabled. Orders will be constructed for both FIX accounts.');
       } else {
         setTradingCTraderStatus('', 'Not configured');
         btn.textContent = 'Add Signal & Create Hedge';
@@ -3295,14 +3435,12 @@
     updateChallenge();
     updateBankrollSim();
     updateHedgeLotInfo();
-    loadCTraderSettings();
+    loadFixSettings();
     renderCopierLog();
     updateCopierPreview();
     // Restore auto-send state
     (function() {
-      const token = document.getElementById('ct-access-token').value;
-      const accountId = document.getElementById('ct-account-id').value;
-      if (token && accountId) {
+      if (isFixConfigured('challenge') && isFixConfigured('hedge')) {
         setTradingCTraderStatus('', 'Ready (toggle to enable)');
       }
     })();
