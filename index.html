@@ -1304,7 +1304,10 @@
   <main id="tab-trading" class="tab-content" style="display:none;">
     <!-- Signal Input Card -->
     <div class="card">
-      <div class="card-title"><span class="dot"></span> New Prop Firm Signal</div>
+      <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
+        <span><span class="dot"></span> New Prop Firm Signal</span>
+        <span id="signal-challenge-badge" style="font-size:0.7rem; font-weight:600; padding:0.2rem 0.6rem; border-radius:6px; background:var(--border); color:var(--text-secondary);"></span>
+      </div>
       <div class="form-group">
         <label>Currency Pair</label>
         <select id="input-pair" onchange="calcPropLots(); updateRiskPreview()">
@@ -2066,6 +2069,16 @@
       return recoverAmt / propTarget$;
     }
 
+    function updateSignalChallengeBadge() {
+      const badge = document.getElementById('signal-challenge-badge');
+      if (!badge) return;
+      const stepsLabel = challengeSteps + '-Step Challenge';
+      const phaseLabel = getPhaseLabel(currentPhase);
+      badge.textContent = stepsLabel + '  ·  ' + phaseLabel;
+      badge.style.background = currentPhase === 'funded' ? 'rgba(0,200,120,0.15)' : 'var(--border)';
+      badge.style.color = currentPhase === 'funded' ? '#00c878' : 'var(--text-secondary)';
+    }
+
     function updateHedgeLotInfo() {
       const mode = document.getElementById('setting-lot-mode').value;
       const infoEl = document.getElementById('hedge-lot-info');
@@ -2442,6 +2455,7 @@
       saveChallenge();
       updateChallenge();
       updateHedgeLotInfo();
+      updateSignalChallengeBadge();
       updateBankrollSim();
     }
 
@@ -2464,6 +2478,7 @@
       saveChallenge();
       updateChallenge();
       updateHedgeLotInfo();
+      updateSignalChallengeBadge();
       updateBankrollSim();
     }
 
@@ -3917,6 +3932,7 @@
     updateChallenge();
     updateBankrollSim();
     updateHedgeLotInfo();
+    updateSignalChallengeBadge();
     loadFixSettings();
     loadBridgeUrl();
     renderCopierLog();
