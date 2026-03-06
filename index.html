@@ -2098,8 +2098,7 @@
         return;
       }
 
-      const phaseLabel = currentPhase === 'funded' ? 'Funded' : currentPhase === 'phase2' ? 'Phase 2' : 'Phase 1';
-      infoEl.innerHTML = `<strong>Auto (${phaseLabel}):</strong> Recover $${recoverAmt.toFixed(0)} / Prop target $${propTarget$.toFixed(0)} = <strong>${multiplier.toFixed(4)}x</strong> lot ratio`;
+      infoEl.innerHTML = `<strong>Auto (${getPhaseLabel(currentPhase)}):</strong> Recover $${recoverAmt.toFixed(0)} / Prop target $${propTarget$.toFixed(0)} = <strong>${multiplier.toFixed(4)}x</strong> lot ratio`;
     }
 
     // Auto-calculate prop lot size from risk%, account balance, and SL pips
