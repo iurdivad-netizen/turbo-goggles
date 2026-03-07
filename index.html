@@ -2051,18 +2051,22 @@
       }
 
       // Auto mode: calculate from simulation
+      // Hedge wins when prop LOSES, so size based on max drawdown (the loss amount),
+      // not profit target. When profitTarget == maxDD they're equal, but when they
+      // differ, maxDD is the actual dollar move the hedge captures on a fail.
       const p = challenge[currentPhase] || {};
+      const p1 = challenge.phase1 || {};
       const balance = p.balance || 0;
-      const profitTargetPct = p.profitTarget || 0;
-      if (balance <= 0 || profitTargetPct <= 0) return 1;
+      const maxDDPct = p.maxDD || p1.maxDD || 0;
+      if (balance <= 0 || maxDDPct <= 0) return 1;
 
-      const propTarget$ = balance * profitTargetPct / 100;
+      const maxDD$ = balance * maxDDPct / 100;
 
       const recoverAmt = getPhaseRecoverAmt(currentPhase);
 
-      if (recoverAmt <= 0 || propTarget$ <= 0) return 1;
+      if (recoverAmt <= 0 || maxDD$ <= 0) return 1;
 
-      return recoverAmt / propTarget$;
+      return recoverAmt / maxDD$;
     }
 
     function updateSignalChallengeBadge() {
@@ -2087,18 +2091,36 @@
 
       const multiplier = getHedgeMultiplier();
       const p = challenge[currentPhase] || {};
+      const p1 = challenge.phase1 || {};
       const balance = p.balance || 0;
       const profitTargetPct = p.profitTarget || 0;
+      const maxDDPct = p.maxDD || p1.maxDD || 0;
       const propTarget$ = balance * profitTargetPct / 100;
+      const maxDD$ = balance * maxDDPct / 100;
 
       const recoverAmt = getPhaseRecoverAmt(currentPhase);
 
-      if (balance <= 0 || propTarget$ <= 0 || recoverAmt <= 0) {
+      if (balance <= 0 || maxDD$ <= 0 || recoverAmt <= 0) {
         infoEl.innerHTML = 'Auto: Set challenge & simulation details to calculate hedge ratio.';
         return;
       }
 
-      infoEl.innerHTML = `<strong>Auto (${getPhaseLabel(currentPhase)}):</strong> Recover $${recoverAmt.toFixed(0)} / Prop target $${propTarget$.toFixed(0)} = <strong>${multiplier.toFixed(4)}x</strong> lot ratio`;
+      // Hedge P/L scenarios:
+      // Prop FAILS (hits max DD) → hedge WINS: hedgeLots gain maxDD pips = recoverAmt
+      // Prop PASSES (hits target) → hedge LOSES: hedgeLots lose profitTarget pips
+      const hedgeLossOnPass = propTarget$ > 0 ? propTarget$ * multiplier : 0;
+
+      let html = `<strong>Auto (${getPhaseLabel(currentPhase)}):</strong> Recover $${recoverAmt.toFixed(0)} / Max DD $${maxDD$.toFixed(0)} = <strong>${multiplier.toFixed(4)}x</strong> lot ratio`;
+
+      html += `<div style="margin-top:0.35rem; padding:0.4rem 0.5rem; background:var(--bg-secondary); border-radius:0.4rem; font-size:0.72rem; line-height:1.5;">`;
+      html += `<span style="color:var(--text-secondary);">Hedge P/L simulation:</span><br>`;
+      html += `<span class="buy-text">Prop fails (max DD ${maxDDPct}%):</span> Hedge wins <strong>+$${recoverAmt.toFixed(2)}</strong><br>`;
+      if (propTarget$ > 0) {
+        html += `<span class="sell-text">Prop passes (target ${profitTargetPct}%):</span> Hedge loses <strong>-$${hedgeLossOnPass.toFixed(2)}</strong>`;
+      }
+      html += `</div>`;
+
+      infoEl.innerHTML = html;
     }
 
     // Auto-calculate prop lot size from risk%, account balance, and SL pips
@@ -2897,17 +2919,23 @@
     // ── Bankroll simulation (dynamic phase model) ──
     function getPhaseRecoverAmt(phase) {
       const challengeCost = (challenge.phase1 || {}).fee || 0;
+      const p1 = challenge.phase1 || {};
       const steps = getSimPhaseCount();
       const getVal = (id) => { const el = document.getElementById(id); return el ? parseFloat(el.value) || 0 : 0; };
 
-      // Build cumulative recovers: first phase covers fee + desired net,
-      // subsequent phases only cover desired net + all prior hedge losses (fee already in cumLoss)
+      // Build cumulative losses: when a phase passes, the actual hedge loss depends
+      // on the profitTarget/maxDD ratio (not the full recover/deposit amount).
       let cumLoss = 0;
       for (let i = 1; i <= steps; i++) {
         const net = getVal('sim-p' + i + '-net-input');
         const recover = net + (i === 1 ? challengeCost : 0) + cumLoss;
         if ('phase' + i === phase) return recover;
-        cumLoss += recover; // if this phase passed, hedge lost this amount
+        // Actual hedge loss on pass = recover * (profitTarget / maxDD)
+        const pp = challenge['phase' + i] || {};
+        const profitTargetPct = pp.profitTarget || 0;
+        const maxDDPct = pp.maxDD || p1.maxDD || 0;
+        const hedgeLoss = maxDDPct > 0 ? recover * profitTargetPct / maxDDPct : recover;
+        cumLoss += hedgeLoss;
       }
 
       // Funded phase
@@ -2980,24 +3008,38 @@
       const profitSplit = (pFunded.profitSplit || 80) / 100;
 
       // Calculate recover amounts from desired net
-      // Key insight: if you pass phase N, the hedge on phase N LOSES its recover amount.
-      // So if you then FAIL phase N+1, you need to recover:
-      //   desiredNet + fee + all previous phase hedge losses (cumulative)
+      // Key insight: if you pass phase N, the hedge on phase N LOSES based on the
+      // profit target (not max DD). The multiplier is sized for max DD, so when
+      // profitTarget != maxDD, the hedge loss on pass differs from the recover amount.
+      // hedgeLossOnPass = recover * (profitTarget / maxDD)
       const phaseNets = [];
       const phaseRecovers = [];
+      const phaseHedgeLosses = []; // actual hedge loss when prop passes (profitTarget-based)
       let cumulativeLoss = 0; // tracks total hedge losses from passed phases
       for (let i = 1; i <= steps; i++) {
         const v = getInputVal('sim-p' + i + '-net-input');
         const net = v !== '' ? parseFloat(v) || 0 : 0;
         phaseNets.push(net);
+        const phaseKey = 'phase' + i;
+        const pp = challenge[phaseKey] || {};
+        const profitTargetPct = pp.profitTarget || 0;
+        const maxDDPct = pp.maxDD || p1.maxDD || 0;
         // Only first phase includes fee; subsequent phases inherit it via cumulativeLoss
         const recover = net + (i === 1 ? challengeCost : 0) + cumulativeLoss;
         phaseRecovers.push(recover);
-        cumulativeLoss += recover; // if this phase passes, hedge loses this recover amount
+        // Actual hedge loss when prop passes: proportional to profitTarget/maxDD
+        const hedgeLoss = maxDDPct > 0 ? recover * profitTargetPct / maxDDPct : recover;
+        phaseHedgeLosses.push(hedgeLoss);
+        cumulativeLoss += hedgeLoss; // if this phase passes, hedge loses this amount
       }
       const fundedNetVal = getInputVal('sim-funded-net-input');
       const fundedNet = fundedNetVal !== '' ? parseFloat(fundedNetVal) || 0 : 0;
       const fundedRecover = fundedNet + cumulativeLoss;
+      // Funded hedge loss on pass
+      const fpp = challenge.funded || {};
+      const fundedProfitTargetPct = fpp.profitTarget || 0;
+      const fundedMaxDDPct = fpp.maxDD || p1.maxDD || 0;
+      const fundedHedgeLoss = fundedMaxDDPct > 0 ? fundedRecover * fundedProfitTargetPct / fundedMaxDDPct : fundedRecover;
 
       // Save sim inputs per step count
       let saveData;
@@ -3008,10 +3050,12 @@
       for (let i = 1; i <= 3; i++) saveData['p' + i + 'NetCustom'] = getInputVal('sim-p' + i + '-net-input');
       localStorage.setItem(getSimStorageKey(), JSON.stringify(saveData));
 
-      // Total Funds Needed: fee is already included in hedge losses (in phase 1 recover).
-      // Total capital at risk = sum of all hedge deposits + the initial challenge fee.
-      const totalHedgeLosses = phaseRecovers.reduce((a, b) => a + b, 0) + fundedRecover;
-      const totalFundsNeeded = totalHedgeLosses + challengeCost;
+      // Total hedge losses when all phases pass use actual hedge loss amounts
+      // (based on profitTarget/maxDD ratio), not the recover (deposit) amounts.
+      // Total funds needed = fee + sum of all hedge deposits (recover amounts).
+      const totalHedgeLosses = phaseHedgeLosses.reduce((a, b) => a + b, 0) + fundedHedgeLoss;
+      const totalHedgeDeposits = phaseRecovers.reduce((a, b) => a + b, 0) + fundedRecover;
+      const totalFundsNeeded = totalHedgeDeposits + challengeCost;
       const fundedPayout = fundedGoal * profitSplit;
       const netAllPass = fundedPayout - totalHedgeLosses - challengeCost + (refund ? challengeCost : 0);
       const hasData = challengeCost > 0 || phaseNets.some(n => n > 0) || fundedNet > 0;
@@ -3080,16 +3124,17 @@
           action: `Hedge wins $${recover.toFixed(0)} (${recoverParts.join(' + ')}). ${coversText}, net +$${phaseNets[i].toFixed(0)} & retry`
         });
 
-        // PASS: hedge loses recover, you move on
+        // PASS: hedge loses based on profitTarget/maxDD ratio
+        const actualLoss = phaseHedgeLosses[i];
         scenarios.push({
           phase: phaseLabel, outcome: 'PASS', outcomeClass: 'buy-text',
           deposit: '$' + recover.toFixed(0),
-          hedgeResult: '-$' + recover.toFixed(2), hedgeClass: 'sell-text',
-          net: '-$' + recover.toFixed(0),
-          action: `Hedge lost $${recover.toFixed(0)}. Deposit $${nextDeposit.toFixed(0)} for ${nextLabel} (includes this loss)`
+          hedgeResult: '-$' + actualLoss.toFixed(2), hedgeClass: 'sell-text',
+          net: '-$' + actualLoss.toFixed(0),
+          action: `Hedge lost $${actualLoss.toFixed(0)}${actualLoss !== recover ? ' (deposit was $' + recover.toFixed(0) + ')' : ''}. Deposit $${nextDeposit.toFixed(0)} for ${nextLabel}`
         });
 
-        lostSoFar += recover;
+        lostSoFar += actualLoss;
       }
 
       // Funded FAIL - recover parts (fee already in prior losses)
@@ -3109,7 +3154,7 @@
       scenarios.push({
         phase: 'Funded', outcome: 'PASS', outcomeClass: 'buy-text',
         deposit: '$' + fundedRecover.toFixed(0),
-        hedgeResult: '-$' + fundedRecover.toFixed(2), hedgeClass: 'sell-text',
+        hedgeResult: '-$' + fundedHedgeLoss.toFixed(2), hedgeClass: 'sell-text',
         net: (netAllPass >= 0 ? '+' : '') + '$' + netAllPass.toFixed(0),
         action: `Payout $${fundedPayout.toFixed(0)}. Total net ${netSign}$${Math.abs(netAllPass).toFixed(0)}. Keep funded account!`
       });
@@ -3142,14 +3187,16 @@
 
       for (let i = 0; i < steps; i++) {
         const label = steps === 1 ? 'Evaluation' : 'Phase ' + (i + 1);
+        const lossNote = phaseHedgeLosses[i] !== phaseRecovers[i] ? ` (deposit $${phaseRecovers[i].toFixed(0)})` : '';
         breakdown += `
-          <span>${label} hedge loss</span>
-          <span class="sell-text" style="text-align:right;">-$${phaseRecovers[i].toFixed(2)}</span>`;
+          <span>${label} hedge loss${lossNote}</span>
+          <span class="sell-text" style="text-align:right;">-$${phaseHedgeLosses[i].toFixed(2)}</span>`;
       }
 
+      const fundedLossNote = fundedHedgeLoss !== fundedRecover ? ` (deposit $${fundedRecover.toFixed(0)})` : '';
       breakdown += `
-          <span>Funded hedge loss</span>
-          <span class="sell-text" style="text-align:right;">-$${fundedRecover.toFixed(2)}</span>
+          <span>Funded hedge loss${fundedLossNote}</span>
+          <span class="sell-text" style="text-align:right;">-$${fundedHedgeLoss.toFixed(2)}</span>
           <span>Funded Payout (${(profitSplit*100).toFixed(0)}% of $${fundedGoal.toFixed(0)})</span>
           <span class="buy-text" style="text-align:right;">+$${fundedPayout.toFixed(2)}</span>`;
 
@@ -3164,7 +3211,7 @@
           <span class="${netClass}" style="border-top:1px solid var(--border); padding-top:0.4rem; font-weight:700; text-align:right;">${netSign}$${Math.abs(netAllPass).toFixed(2)}</span>
         </div>
         <div style="margin-top:0.5rem; font-size:0.72rem; color:var(--text-secondary);">
-          Total funds needed: $${totalFundsNeeded.toFixed(2)} (Fee $${challengeCost.toFixed(0)} + All hedge deposits $${totalHedgeLosses.toFixed(0)}). Fee recovered once in first phase; subsequent phases recover prior losses only.
+          Total funds needed: $${totalFundsNeeded.toFixed(2)} (Fee $${challengeCost.toFixed(0)} + All hedge deposits $${totalHedgeDeposits.toFixed(0)}). Hedge sized by max drawdown; loss on pass based on profit target.
         </div>
       </div>`;
 
