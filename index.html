@@ -2106,17 +2106,26 @@
       }
 
       // Hedge P/L scenarios:
-      // Prop FAILS (hits max DD) → hedge WINS: hedgeLots gain maxDD pips = recoverAmt
-      // Prop PASSES (hits target) → hedge LOSES: hedgeLots lose profitTarget pips
-      const hedgeLossOnPass = propTarget$ > 0 ? propTarget$ * multiplier : 0;
+      // Prop FAILS (hits max DD) → hedge WINS: recoverAmt
+      // Prop PASSES (hits target/payout) → hedge LOSES proportionally
+      // For funded phase, use payout target (profitTarget% or Funded Goal $)
+      let passTarget$, passLabel;
+      if (currentPhase === 'funded') {
+        passTarget$ = getFundedPayoutTarget$();
+        passLabel = passTarget$ > 0 ? `payout $${passTarget$.toFixed(0)}` : '';
+      } else {
+        passTarget$ = propTarget$;
+        passLabel = propTarget$ > 0 ? `target ${profitTargetPct}%` : '';
+      }
+      const hedgeLossOnPass = (passTarget$ > 0 && maxDD$ > 0) ? recoverAmt * passTarget$ / maxDD$ : 0;
 
       let html = `<strong>Auto (${getPhaseLabel(currentPhase)}):</strong> Recover $${recoverAmt.toFixed(0)} / Max DD $${maxDD$.toFixed(0)} = <strong>${multiplier.toFixed(4)}x</strong> lot ratio`;
 
       html += `<div style="margin-top:0.35rem; padding:0.4rem 0.5rem; background:var(--bg-secondary); border-radius:0.4rem; font-size:0.72rem; line-height:1.5;">`;
       html += `<span style="color:var(--text-secondary);">Hedge P/L simulation:</span><br>`;
       html += `<span class="buy-text">Prop fails (max DD ${maxDDPct}%):</span> Hedge wins <strong>+$${recoverAmt.toFixed(2)}</strong><br>`;
-      if (propTarget$ > 0) {
-        html += `<span class="sell-text">Prop passes (target ${profitTargetPct}%):</span> Hedge loses <strong>-$${hedgeLossOnPass.toFixed(2)}</strong>`;
+      if (passTarget$ > 0 && hedgeLossOnPass > 0) {
+        html += `<span class="sell-text">Prop passes (${passLabel}):</span> Hedge loses <strong>-$${hedgeLossOnPass.toFixed(2)}</strong>`;
       }
       html += `</div>`;
 
@@ -2947,6 +2956,19 @@
       return challengeCost;
     }
 
+    // Get funded payout target in $. Uses profitTarget% if set, otherwise Funded Account Goal $.
+    function getFundedPayoutTarget$() {
+      const fpp = challenge.funded || {};
+      const p1 = challenge.phase1 || {};
+      const balance = fpp.balance || p1.balance || 0;
+      const profitTargetPct = fpp.profitTarget || 0;
+      if (profitTargetPct > 0 && balance > 0) {
+        return balance * profitTargetPct / 100;
+      }
+      const goalEl = document.getElementById('sim-funded-goal');
+      return goalEl ? parseFloat(goalEl.value) || 0 : 0;
+    }
+
     function getSimPhaseCount() {
       return challengeSteps;
     }
@@ -3036,14 +3058,14 @@
       const fundedNetVal = getInputVal('sim-funded-net-input');
       const fundedNet = fundedNetVal !== '' ? parseFloat(fundedNetVal) || 0 : 0;
       const fundedRecover = fundedNet + cumulativeLoss;
-      // Funded hedge loss on pass
-      // Funded phase typically has no profitTarget (it's 0), so use maxDD as the
-      // loss basis (1:1 ratio). If a profitTarget IS set, use the ratio.
+      // Funded hedge loss on pass: use payout target (profitTarget% or Funded Goal $)
       const fpp = challenge.funded || {};
-      const fundedProfitTargetPct = fpp.profitTarget || 0;
       const fundedMaxDDPct = fpp.maxDD || p1.maxDD || 0;
-      const fundedHedgeLoss = (fundedProfitTargetPct > 0 && fundedMaxDDPct > 0)
-        ? fundedRecover * fundedProfitTargetPct / fundedMaxDDPct
+      const fundedBalance = fpp.balance || p1.balance || 0;
+      const fundedMaxDD$ = fundedBalance * fundedMaxDDPct / 100;
+      const fundedPayoutTarget = getFundedPayoutTarget$();
+      const fundedHedgeLoss = (fundedPayoutTarget > 0 && fundedMaxDD$ > 0)
+        ? fundedRecover * fundedPayoutTarget / fundedMaxDD$
         : fundedRecover;
 
       // Save sim inputs per step count
@@ -3156,12 +3178,13 @@
       });
 
       // Funded PASS
+      const fundedPayoutLabel = fundedPayoutTarget > 0 ? ` (payout target $${fundedPayoutTarget.toFixed(0)})` : '';
       scenarios.push({
         phase: 'Funded', outcome: 'PASS', outcomeClass: 'buy-text',
         deposit: '$' + fundedRecover.toFixed(0),
         hedgeResult: '-$' + fundedHedgeLoss.toFixed(2), hedgeClass: 'sell-text',
         net: (netAllPass >= 0 ? '+' : '') + '$' + netAllPass.toFixed(0),
-        action: `Payout $${fundedPayout.toFixed(0)}. Total net ${netSign}$${Math.abs(netAllPass).toFixed(0)}. Keep funded account!`
+        action: `Payout $${fundedPayout.toFixed(0)}${fundedPayoutLabel}. Total net ${netSign}$${Math.abs(netAllPass).toFixed(0)}. Keep funded account!`
       });
 
       // Render scenario table
