@@ -2934,7 +2934,7 @@
         const pp = challenge['phase' + i] || {};
         const profitTargetPct = pp.profitTarget || 0;
         const maxDDPct = pp.maxDD || p1.maxDD || 0;
-        const hedgeLoss = maxDDPct > 0 ? recover * profitTargetPct / maxDDPct : recover;
+        const hedgeLoss = (profitTargetPct > 0 && maxDDPct > 0) ? recover * profitTargetPct / maxDDPct : recover;
         cumLoss += hedgeLoss;
       }
 
@@ -3028,7 +3028,8 @@
         const recover = net + (i === 1 ? challengeCost : 0) + cumulativeLoss;
         phaseRecovers.push(recover);
         // Actual hedge loss when prop passes: proportional to profitTarget/maxDD
-        const hedgeLoss = maxDDPct > 0 ? recover * profitTargetPct / maxDDPct : recover;
+        // If profitTarget is 0 (not set), fall back to full recover amount
+        const hedgeLoss = (profitTargetPct > 0 && maxDDPct > 0) ? recover * profitTargetPct / maxDDPct : recover;
         phaseHedgeLosses.push(hedgeLoss);
         cumulativeLoss += hedgeLoss; // if this phase passes, hedge loses this amount
       }
@@ -3036,10 +3037,14 @@
       const fundedNet = fundedNetVal !== '' ? parseFloat(fundedNetVal) || 0 : 0;
       const fundedRecover = fundedNet + cumulativeLoss;
       // Funded hedge loss on pass
+      // Funded phase typically has no profitTarget (it's 0), so use maxDD as the
+      // loss basis (1:1 ratio). If a profitTarget IS set, use the ratio.
       const fpp = challenge.funded || {};
       const fundedProfitTargetPct = fpp.profitTarget || 0;
       const fundedMaxDDPct = fpp.maxDD || p1.maxDD || 0;
-      const fundedHedgeLoss = fundedMaxDDPct > 0 ? fundedRecover * fundedProfitTargetPct / fundedMaxDDPct : fundedRecover;
+      const fundedHedgeLoss = (fundedProfitTargetPct > 0 && fundedMaxDDPct > 0)
+        ? fundedRecover * fundedProfitTargetPct / fundedMaxDDPct
+        : fundedRecover;
 
       // Save sim inputs per step count
       let saveData;
