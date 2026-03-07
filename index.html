@@ -3271,10 +3271,16 @@
       let fullPassCount = 0;
       let fullPassTotalDays = [];
       let attemptsInAvailDays = [];
-      // Hedge account tracking
+      // Hedge account tracking (single attempt)
       const hedgeEndBalances = [];
       const hedgePnLs = [];
       let hedgeBustedCount = 0;
+      // Multi-attempt tracking (available days)
+      const multiPassCounts = [];
+      const multiFailCounts = [];
+      const multiHedgeEnd = [];
+      const multiHedgeMin = [];
+      const multiHedgeMax = [];
 
       for (let run = 0; run < mcRuns; run++) {
         let totalDays = 0;
@@ -3321,22 +3327,56 @@
           hedgePnLs.push(hedgeBalance - hedgeStartBalance);
         }
 
-        // How many full challenge attempts fit in available days
+        // How many full challenge attempts fit in available days, tracking pass/fail and hedge balance
         if (availDays > 0) {
           let daysLeft = availDays;
           let attempts = 0;
+          let passes = 0;
+          let fails = 0;
+          let hBal = hedgeStartBalance;
+          let hMin = hedgeStartBalance;
+          let hMax = hedgeStartBalance;
+
           while (daysLeft > 0) {
             let attemptDays = 0;
+            let attemptPassed = true;
+
+            // Pay fee
+            hBal -= fee;
+            if (hBal < hMin) hMin = hBal;
+
             for (let pi = 0; pi < phases.length; pi++) {
               const result = simPhase(phases[pi]);
               attemptDays += result.days;
-              if (!result.passed) break;
+              if (result.passed) {
+                hBal -= phaseHedgeLosses[pi];
+              } else {
+                hBal += phaseRecovers[pi];
+                attemptPassed = false;
+                break;
+              }
             }
+            if (attemptPassed && simRefund) hBal += fee;
+
+            if (hBal > hMax) hMax = hBal;
+            if (hBal < hMin) hMin = hBal;
+
             if (attemptDays <= 0) break;
             daysLeft -= attemptDays;
-            if (daysLeft >= 0) attempts++;
+            if (daysLeft >= 0) {
+              attempts++;
+              if (attemptPassed) passes++; else fails++;
+            }
+
+            // Stop if hedge account is busted
+            if (hBal <= 0) break;
           }
           attemptsInAvailDays.push(attempts);
+          multiPassCounts.push(passes);
+          multiFailCounts.push(fails);
+          multiHedgeEnd.push(hBal);
+          multiHedgeMin.push(hMin);
+          multiHedgeMax.push(hMax);
         }
       }
 
@@ -3365,12 +3405,67 @@
       html += `<div class="challenge-stat-box"><div class="csl">Best Case (10th %ile)</div><div class="csv">${fullPassCount > 0 ? percentile(fullPassTotalDays, 10) + ' days' : '--'}</div></div>`;
       html += `<div class="challenge-stat-box"><div class="csl">Worst Case (90th %ile)</div><div class="csv">${fullPassCount > 0 ? percentile(fullPassTotalDays, 90) + ' days' : '--'}</div></div>`;
 
+      html += `</div>`;
+
+      // Multi-attempt results (available days)
       if (availDays > 0 && attemptsInAvailDays.length > 0) {
         const avgAttempts = avg(attemptsInAvailDays);
         const medAttempts = percentile(attemptsInAvailDays, 50);
-        html += `<div class="challenge-stat-box"><div class="csl">Attempts in ${availDays} Days</div><div class="csv">${medAttempts} median (avg ${avgAttempts.toFixed(1)})</div></div>`;
+        const avgPasses = avg(multiPassCounts);
+        const medPasses = percentile(multiPassCounts, 50);
+        const avgFails = avg(multiFailCounts);
+        const medFails = percentile(multiFailCounts, 50);
+
+        html += `<div class="card-title" style="font-size:0.82rem; margin-top:1.25rem; margin-bottom:0.5rem;"><span class="dot dot-warn"></span> Multi-Attempt Results (${availDays} Days)</div>`;
+        html += `<div class="challenge-stats">`;
+        html += `<div class="challenge-stat-box"><div class="csl">Total Attempts</div><div class="csv">${medAttempts} median (avg ${avgAttempts.toFixed(1)})</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Successful Challenges</div><div class="csv buy-text">${medPasses} median (avg ${avgPasses.toFixed(1)})</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Failed Challenges</div><div class="csv sell-text">${medFails} median (avg ${avgFails.toFixed(1)})</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Min / Max Attempts</div><div class="csv">${Math.min(...attemptsInAvailDays)} / ${Math.max(...attemptsInAvailDays)}</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Min / Max Passes</div><div class="csv buy-text">${Math.min(...multiPassCounts)} / ${Math.max(...multiPassCounts)}</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Min / Max Fails</div><div class="csv sell-text">${Math.min(...multiFailCounts)} / ${Math.max(...multiFailCounts)}</div></div>`;
+        html += `</div>`;
+
+        // Hedge account over the full period
+        if (hedgeStartBalance > 0 && multiHedgeEnd.length > 0) {
+          const mhAvgEnd = avg(multiHedgeEnd);
+          const mhMedEnd = percentile(multiHedgeEnd, 50);
+          const mhAvgMin = avg(multiHedgeMin);
+          const mhAvgMax = avg(multiHedgeMax);
+          const mhWorstMin = Math.min(...multiHedgeMin);
+          const mhBestMax = Math.max(...multiHedgeMax);
+          const mhBusted = multiHedgeEnd.filter(b => b <= 0).length;
+          const mhBustedPct = (mhBusted / mcRuns * 100);
+          const mhEndPnl = mhMedEnd - hedgeStartBalance;
+
+          html += `<div class="card-title" style="font-size:0.82rem; margin-top:1rem; margin-bottom:0.5rem;"><span class="dot" style="background:var(--sell-color);"></span> Hedge Account Over ${availDays} Days <span style="font-size:0.68rem; color:var(--text-secondary); font-weight:400;">(Starting: $${hedgeStartBalance.toLocaleString()})</span></div>`;
+          html += `<div class="challenge-stats">`;
+          html += `<div class="challenge-stat-box"><div class="csl">Avg End Balance</div><div class="csv ${mhAvgEnd >= hedgeStartBalance ? 'buy-text' : 'sell-text'}">$${mhAvgEnd.toFixed(2)}</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Median End Balance</div><div class="csv ${mhMedEnd >= hedgeStartBalance ? 'buy-text' : 'sell-text'}">$${mhMedEnd.toFixed(2)}</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Median P/L</div><div class="csv ${mhEndPnl >= 0 ? 'buy-text' : 'sell-text'}">${mhEndPnl >= 0 ? '+' : '-'}$${Math.abs(mhEndPnl).toFixed(2)}</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Account Busted</div><div class="csv ${mhBustedPct > 0 ? 'sell-text' : 'buy-text'}">${mhBustedPct.toFixed(1)}%</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Avg Lowest Balance</div><div class="csv ${mhAvgMin >= 0 ? '' : 'sell-text'}">$${mhAvgMin.toFixed(2)}</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Avg Highest Balance</div><div class="csv buy-text">$${mhAvgMax.toFixed(2)}</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Worst Low (all runs)</div><div class="csv ${mhWorstMin >= 0 ? '' : 'sell-text'}">$${mhWorstMin.toFixed(2)}</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Best High (all runs)</div><div class="csv buy-text">$${mhBestMax.toFixed(2)}</div></div>`;
+          html += `</div>`;
+
+          // Distribution
+          html += `<div style="margin-top:1rem; background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">`;
+          html += `<div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Hedge End Balance After ${availDays} Days — Distribution</div>`;
+          html += `<div style="display:grid; grid-template-columns:1fr auto; gap:0.25rem 1rem;">`;
+          html += `<span>Starting Balance</span><span style="text-align:right; font-weight:600;">$${hedgeStartBalance.toFixed(2)}</span>`;
+          [10, 25, 50, 75, 90].forEach(p => {
+            const val = percentile(multiHedgeEnd, p);
+            const pnl = val - hedgeStartBalance;
+            const cls = pnl >= 0 ? 'buy-text' : 'sell-text';
+            html += `<span>${p}th percentile</span><span class="${cls}" style="text-align:right; font-weight:600;">$${val.toFixed(2)} (${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)})</span>`;
+          });
+          html += `<span>Minimum</span><span style="text-align:right; font-weight:600;">$${Math.min(...multiHedgeEnd).toFixed(2)}</span>`;
+          html += `<span>Maximum</span><span style="text-align:right; font-weight:600;">$${Math.max(...multiHedgeEnd).toFixed(2)}</span>`;
+          html += `</div></div>`;
+        }
       }
-      html += `</div>`;
 
       // Hedge account results
       if (hedgeStartBalance > 0 && hedgeEndBalances.length > 0) {
