@@ -848,6 +848,11 @@
       display: block;
     }
 
+    /* Challenge Simulator tab styles */
+    #tab-simulator.active {
+      display: block;
+    }
+
     .copier-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1134,6 +1139,7 @@
     <button class="main-tab active" onclick="switchMainTab('strategy')">Strategy & Simulation</button>
     <button class="main-tab" onclick="switchMainTab('trading')">Trading</button>
     <button class="main-tab" onclick="switchMainTab('copier')">Trade Copier</button>
+    <button class="main-tab" onclick="switchMainTab('simulator')">Challenge Simulator</button>
   </div>
 
   <main id="tab-strategy" class="tab-content active">
@@ -1843,6 +1849,62 @@
     </div>
   </main>
 
+  <main id="tab-simulator" class="tab-content" style="display:none;">
+    <div class="card full-width">
+      <div class="card-title"><span class="dot dot-warn"></span> Challenge Simulator</div>
+      <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        Estimate how many trading days to pass or fail each phase, and how many challenge attempts fit within a given timeframe.
+        Uses your challenge settings and trader metrics below.
+      </p>
+
+      <div class="card-title" style="font-size:0.82rem; margin-bottom:0.5rem;"><span class="dot" style="background:var(--accent);"></span> Trader Metrics</div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Win Rate (%)</label>
+          <input type="number" id="sim2-winrate" min="0" max="100" step="1" placeholder="e.g. 55" oninput="runChallengeSimulation()">
+          <span style="font-size:0.68rem; color:var(--text-secondary);" id="sim2-winrate-hint"></span>
+        </div>
+        <div class="form-group">
+          <label>Average Risk:Reward (R)</label>
+          <input type="number" id="sim2-avg-rr" min="0.1" step="0.1" placeholder="e.g. 2.0" oninput="runChallengeSimulation()">
+          <span style="font-size:0.68rem; color:var(--text-secondary);" id="sim2-rr-hint"></span>
+        </div>
+        <div class="form-group">
+          <label>Risk per Trade (%)</label>
+          <input type="number" id="sim2-risk-per-trade" min="0.1" step="0.1" placeholder="e.g. 1.0" oninput="runChallengeSimulation()">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Trades per Day</label>
+          <input type="number" id="sim2-trades-per-day" min="1" step="1" value="2" oninput="runChallengeSimulation()">
+        </div>
+        <div class="form-group">
+          <label>Available Days</label>
+          <input type="number" id="sim2-available-days" min="1" step="1" placeholder="e.g. 365" oninput="runChallengeSimulation()">
+          <span style="font-size:0.68rem; color:var(--text-secondary);">Total calendar days for attempts</span>
+        </div>
+        <div class="form-group">
+          <label>Monte Carlo Runs</label>
+          <select id="sim2-mc-runs" onchange="runChallengeSimulation()">
+            <option value="1000">1,000</option>
+            <option value="5000" selected>5,000</option>
+            <option value="10000">10,000</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <button class="btn btn-primary" style="max-width:220px;" onclick="runChallengeSimulation()">Run Simulation</button>
+        <button class="btn btn-outline" style="max-width:220px;" onclick="loadTraderMetricsFromTrades()">Load from Trade History</button>
+      </div>
+
+      <div class="card-title" style="font-size:0.82rem; margin-top:1rem; margin-bottom:0.5rem;"><span class="dot" style="background:var(--accent);"></span> Challenge Settings Used</div>
+      <div class="challenge-stats" id="sim2-challenge-summary"></div>
+
+      <div id="sim2-results" style="margin-top:1.25rem;"></div>
+    </div>
+  </main>
+
   <!-- Close Trade Modal -->
   <div class="modal-overlay" id="close-modal">
     <div class="modal">
@@ -1883,7 +1945,7 @@
     function switchMainTab(tab) {
       currentMainTab = tab;
       localStorage.setItem('hedgeMainTab', tab);
-      const tabNames = ['strategy', 'trading', 'copier'];
+      const tabNames = ['strategy', 'trading', 'copier', 'simulator'];
       document.querySelectorAll('.main-tab').forEach((btn, i) => {
         btn.classList.toggle('active', tabNames[i] === tab);
       });
@@ -2971,6 +3033,302 @@
 
     function getSimPhaseCount() {
       return challengeSteps;
+    }
+
+    // ── Challenge Simulator (Monte Carlo) ──
+    function loadTraderMetricsFromTrades() {
+      const closed = trades.filter(t => t.status === 'closed');
+      if (closed.length === 0) {
+        showToast('No closed trades to calculate metrics from.', true);
+        return;
+      }
+      const wins = closed.filter(t => t.pnl > 0).length;
+      const winRate = (wins / closed.length) * 100;
+      document.getElementById('sim2-winrate').value = winRate.toFixed(0);
+
+      // Average RR from winning trades
+      const winningTrades = closed.filter(t => t.pnl > 0 && t.propRiskAmt > 0);
+      if (winningTrades.length > 0) {
+        const avgRR = winningTrades.reduce((s, t) => s + (t.propPnl || 0) / (t.propRiskAmt || 1), 0) / winningTrades.length;
+        document.getElementById('sim2-avg-rr').value = Math.abs(avgRR).toFixed(2);
+      }
+
+      // Unique trading days
+      const days = new Set(closed.map(t => t.date));
+      if (days.size > 0) {
+        const tradesPerDay = (closed.length / days.size).toFixed(1);
+        document.getElementById('sim2-trades-per-day').value = Math.round(tradesPerDay);
+      }
+
+      document.getElementById('sim2-winrate-hint').textContent = `From ${closed.length} closed trades`;
+      document.getElementById('sim2-rr-hint').textContent = `From ${winningTrades.length} winning trades`;
+
+      runChallengeSimulation();
+      showToast('Trader metrics loaded from trade history.');
+    }
+
+    function runChallengeSimulation() {
+      const winRate = parseFloat(document.getElementById('sim2-winrate').value) / 100;
+      const avgRR = parseFloat(document.getElementById('sim2-avg-rr').value);
+      const riskPct = parseFloat(document.getElementById('sim2-risk-per-trade').value);
+      const tradesPerDay = parseInt(document.getElementById('sim2-trades-per-day').value) || 1;
+      const availDays = parseInt(document.getElementById('sim2-available-days').value) || 0;
+      const mcRuns = parseInt(document.getElementById('sim2-mc-runs').value) || 5000;
+
+      // Show challenge settings summary
+      const summaryEl = document.getElementById('sim2-challenge-summary');
+      const resultsEl = document.getElementById('sim2-results');
+
+      const steps = challengeSteps;
+      const phases = [];
+      for (let i = 1; i <= steps; i++) {
+        const pp = challenge['phase' + i] || {};
+        const p1 = challenge.phase1 || {};
+        phases.push({
+          label: steps === 1 ? 'Evaluation' : 'Phase ' + i,
+          balance: pp.balance || p1.balance || 0,
+          profitTarget: pp.profitTarget || 0,
+          maxDD: pp.maxDD || p1.maxDD || 0,
+          dailyLoss: pp.dailyLoss || p1.dailyLoss || 0,
+          minDays: pp.minDays || 0,
+          timeLimit: pp.timeLimit || 0
+        });
+      }
+      // Funded phase
+      const fpp = challenge.funded || {};
+      const p1 = challenge.phase1 || {};
+      const fundedPayoutTarget = getFundedPayoutTarget$();
+      const fundedBalance = fpp.balance || p1.balance || 0;
+      const fundedPayoutPct = fundedBalance > 0 ? (fundedPayoutTarget / fundedBalance) * 100 : 0;
+      if (fundedPayoutPct > 0 || (fpp.maxDD || p1.maxDD || 0) > 0) {
+        phases.push({
+          label: 'Funded',
+          balance: fundedBalance,
+          profitTarget: fundedPayoutPct,
+          maxDD: fpp.maxDD || p1.maxDD || 0,
+          dailyLoss: fpp.dailyLoss || p1.dailyLoss || 0,
+          minDays: fpp.minDays || 0,
+          timeLimit: fpp.timeLimit || 0
+        });
+      }
+
+      // Build challenge summary
+      let summaryHtml = '';
+      const fee = (challenge.phase1 || {}).fee || 0;
+      summaryHtml += `<div class="challenge-stat-box"><div class="csl">Steps</div><div class="csv">${steps}</div></div>`;
+      summaryHtml += `<div class="challenge-stat-box"><div class="csl">Fee</div><div class="csv">${fee > 0 ? '$' + fee.toFixed(0) : '--'}</div></div>`;
+      phases.forEach(ph => {
+        summaryHtml += `<div class="challenge-stat-box"><div class="csl">${ph.label}</div><div class="csv">${ph.balance > 0 ? '$' + ph.balance.toLocaleString() : '--'} · ${ph.profitTarget > 0 ? ph.profitTarget + '%' : '--'} / ${ph.maxDD > 0 ? ph.maxDD + '%' : '--'}</div></div>`;
+      });
+      summaryEl.innerHTML = summaryHtml;
+
+      // Validate inputs
+      if (isNaN(winRate) || isNaN(avgRR) || isNaN(riskPct) || winRate <= 0 || avgRR <= 0 || riskPct <= 0) {
+        resultsEl.innerHTML = '<p style="color:var(--text-secondary); font-size:0.82rem;">Enter trader metrics and click Run Simulation.</p>';
+        return;
+      }
+
+      // Expected value per trade (as % of balance)
+      const winAmt = riskPct * avgRR; // % gained on win
+      const lossAmt = riskPct;         // % lost on loss
+      const ev = (winRate * winAmt) - ((1 - winRate) * lossAmt);
+
+      // Simulate one phase: returns { passed, days, tradingDays, peakDD }
+      function simPhase(phase) {
+        let balance = 100; // Normalize to 100%
+        const target = 100 + phase.profitTarget;
+        const ddLimit = phase.maxDD > 0 ? phase.maxDD : 999;
+        const dailyLimit = phase.dailyLoss > 0 ? phase.dailyLoss : 999;
+        const timeLimit = phase.timeLimit > 0 ? phase.timeLimit : 9999;
+        const minDays = phase.minDays || 0;
+        let peak = balance;
+        let day = 0;
+        let tradingDays = 0;
+
+        while (day < timeLimit) {
+          day++;
+          let dailyPnl = 0;
+          let dailyBusted = false;
+
+          for (let t = 0; t < tradesPerDay; t++) {
+            const won = Math.random() < winRate;
+            const pnl = won ? (balance * winAmt / 100) : -(balance * lossAmt / 100);
+            balance += pnl;
+            dailyPnl += pnl;
+
+            if (balance > peak) peak = balance;
+            const dd = ((peak - balance) / peak) * 100;
+
+            // Check max DD breach
+            if (dd >= ddLimit) return { passed: false, days: day, tradingDays };
+
+            // Check daily loss breach
+            if (Math.abs(dailyPnl) >= (100 * dailyLimit / 100) && dailyPnl < 0) {
+              dailyBusted = true;
+              break;
+            }
+
+            // Check target hit
+            if (balance >= target && tradingDays >= minDays) {
+              return { passed: true, days: day, tradingDays };
+            }
+          }
+
+          if (!dailyBusted) tradingDays++;
+
+          // Even if daily busted, still count the day
+          if (dailyBusted) tradingDays++;
+        }
+
+        // Time limit expired
+        return { passed: false, days: day, tradingDays };
+      }
+
+      // Run Monte Carlo across all phases
+      const phaseResults = phases.map(() => ({
+        passCount: 0, failCount: 0,
+        passDays: [], failDays: [],
+        passTradingDays: [], failTradingDays: []
+      }));
+      let fullPassCount = 0;
+      let fullPassTotalDays = [];
+      let attemptsInAvailDays = [];
+
+      for (let run = 0; run < mcRuns; run++) {
+        let totalDays = 0;
+        let passedAll = true;
+
+        for (let pi = 0; pi < phases.length; pi++) {
+          const result = simPhase(phases[pi]);
+          const pr = phaseResults[pi];
+          totalDays += result.days;
+
+          if (result.passed) {
+            pr.passCount++;
+            pr.passDays.push(result.days);
+            pr.passTradingDays.push(result.tradingDays);
+          } else {
+            pr.failCount++;
+            pr.failDays.push(result.days);
+            pr.failTradingDays.push(result.tradingDays);
+            passedAll = false;
+            break; // Stop at first failed phase
+          }
+        }
+
+        if (passedAll) {
+          fullPassCount++;
+          fullPassTotalDays.push(totalDays);
+        }
+
+        // How many full challenge attempts fit in available days
+        if (availDays > 0) {
+          let daysLeft = availDays;
+          let attempts = 0;
+          while (daysLeft > 0) {
+            let attemptDays = 0;
+            for (let pi = 0; pi < phases.length; pi++) {
+              const result = simPhase(phases[pi]);
+              attemptDays += result.days;
+              if (!result.passed) break;
+            }
+            if (attemptDays <= 0) break;
+            daysLeft -= attemptDays;
+            if (daysLeft >= 0) attempts++;
+          }
+          attemptsInAvailDays.push(attempts);
+        }
+      }
+
+      // Helper: percentile
+      function percentile(arr, p) {
+        if (arr.length === 0) return 0;
+        const sorted = arr.slice().sort((a, b) => a - b);
+        const idx = Math.ceil(p / 100 * sorted.length) - 1;
+        return sorted[Math.max(0, idx)];
+      }
+      function avg(arr) { return arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+
+      // Build results
+      let html = '';
+
+      // Overall stats
+      const fullPassRate = (fullPassCount / mcRuns * 100);
+      const avgFullDays = avg(fullPassTotalDays);
+      const medianFullDays = percentile(fullPassTotalDays, 50);
+
+      html += `<div class="card-title" style="font-size:0.82rem; margin-bottom:0.5rem;"><span class="dot dot-warn"></span> Overall Results <span style="font-size:0.68rem; color:var(--text-secondary); font-weight:400;">(${mcRuns.toLocaleString()} simulations, EV/trade: ${ev >= 0 ? '+' : ''}${ev.toFixed(3)}%)</span></div>`;
+      html += `<div class="challenge-stats">`;
+      html += `<div class="challenge-stat-box"><div class="csl">Full Pass Rate</div><div class="csv ${fullPassRate >= 50 ? 'buy-text' : 'sell-text'}">${fullPassRate.toFixed(1)}%</div></div>`;
+      html += `<div class="challenge-stat-box"><div class="csl">Avg Days to Pass All</div><div class="csv">${fullPassCount > 0 ? avgFullDays.toFixed(0) + ' days' : '--'}</div></div>`;
+      html += `<div class="challenge-stat-box"><div class="csl">Median Days to Pass All</div><div class="csv">${fullPassCount > 0 ? medianFullDays + ' days' : '--'}</div></div>`;
+      html += `<div class="challenge-stat-box"><div class="csl">Best Case (10th %ile)</div><div class="csv">${fullPassCount > 0 ? percentile(fullPassTotalDays, 10) + ' days' : '--'}</div></div>`;
+      html += `<div class="challenge-stat-box"><div class="csl">Worst Case (90th %ile)</div><div class="csv">${fullPassCount > 0 ? percentile(fullPassTotalDays, 90) + ' days' : '--'}</div></div>`;
+
+      if (availDays > 0 && attemptsInAvailDays.length > 0) {
+        const avgAttempts = avg(attemptsInAvailDays);
+        const medAttempts = percentile(attemptsInAvailDays, 50);
+        html += `<div class="challenge-stat-box"><div class="csl">Attempts in ${availDays} Days</div><div class="csv">${medAttempts} median (avg ${avgAttempts.toFixed(1)})</div></div>`;
+      }
+      html += `</div>`;
+
+      // Per-phase breakdown table
+      html += `<div style="margin-top:1rem; overflow-x:auto;">`;
+      html += `<table class="sim-phase-table"><thead><tr>
+        <th>Phase</th><th>Pass Rate</th><th>Avg Days Pass</th><th>Median Days Pass</th><th>Avg Days Fail</th><th>Median Days Fail</th>
+      </tr></thead><tbody>`;
+
+      phases.forEach((ph, i) => {
+        const pr = phaseResults[i];
+        const passRate = pr.passCount > 0 ? (pr.passCount / (pr.passCount + pr.failCount) * 100).toFixed(1) : '0.0';
+        const avgPass = avg(pr.passDays).toFixed(0);
+        const medPass = percentile(pr.passDays, 50);
+        const avgFail = avg(pr.failDays).toFixed(0);
+        const medFail = percentile(pr.failDays, 50);
+
+        html += `<tr>
+          <td><strong>${ph.label}</strong></td>
+          <td class="${passRate >= 50 ? 'buy-text' : 'sell-text'}">${passRate}%</td>
+          <td>${pr.passCount > 0 ? avgPass + ' days' : '--'}</td>
+          <td>${pr.passCount > 0 ? medPass + ' days' : '--'}</td>
+          <td>${pr.failCount > 0 ? avgFail + ' days' : '--'}</td>
+          <td>${pr.failCount > 0 ? medFail + ' days' : '--'}</td>
+        </tr>`;
+      });
+      html += `</tbody></table></div>`;
+
+      // Day distribution breakdown
+      if (fullPassCount > 0) {
+        html += `<div style="margin-top:1rem; background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">`;
+        html += `<div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Days to Pass All Phases — Distribution</div>`;
+        html += `<div style="display:grid; grid-template-columns:1fr auto; gap:0.25rem 1rem;">`;
+        [10, 25, 50, 75, 90].forEach(p => {
+          const val = percentile(fullPassTotalDays, p);
+          html += `<span>${p}th percentile</span><span style="text-align:right; font-weight:600;">${val} days</span>`;
+        });
+        html += `<span>Minimum</span><span style="text-align:right; font-weight:600;">${Math.min(...fullPassTotalDays)} days</span>`;
+        html += `<span>Maximum</span><span style="text-align:right; font-weight:600;">${Math.max(...fullPassTotalDays)} days</span>`;
+        html += `</div></div>`;
+      }
+
+      // Probability of passing within X days
+      if (fullPassCount > 0) {
+        html += `<div style="margin-top:1rem; background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">`;
+        html += `<div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Probability of Passing All Phases Within...</div>`;
+        html += `<div style="display:grid; grid-template-columns:1fr auto; gap:0.25rem 1rem;">`;
+        const checkDays = [7, 14, 21, 30, 45, 60, 90, 120, 180];
+        const sortedDays = fullPassTotalDays.slice().sort((a, b) => a - b);
+        checkDays.forEach(d => {
+          const count = sortedDays.filter(v => v <= d).length;
+          const prob = (count / mcRuns * 100);
+          if (prob > 0) {
+            html += `<span>${d} days</span><span style="text-align:right; font-weight:600; ${prob >= 50 ? 'color:var(--buy-color)' : ''}">${prob.toFixed(1)}%</span>`;
+          }
+        });
+        html += `</div></div>`;
+      }
+
+      resultsEl.innerHTML = html;
     }
 
     function updateBankrollSim() {
