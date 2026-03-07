@@ -1893,6 +1893,22 @@
           </select>
         </div>
       </div>
+
+      <div class="card-title" style="font-size:0.82rem; margin-top:0.5rem; margin-bottom:0.5rem;"><span class="dot" style="background:var(--sell-color);"></span> Hedge Account</div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Hedge Starting Balance ($)</label>
+          <input type="number" id="sim2-hedge-balance" min="0" step="1" placeholder="e.g. 2000" oninput="runChallengeSimulation()">
+          <span style="font-size:0.68rem; color:var(--text-secondary);">Real account balance used for hedging</span>
+        </div>
+        <div class="form-group">
+          <label>Refund Fee on Pass?</label>
+          <select id="sim2-refund" onchange="runChallengeSimulation()">
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </div>
+      </div>
       <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
         <button class="btn btn-primary" style="max-width:220px;" onclick="runChallengeSimulation()">Run Simulation</button>
         <button class="btn btn-outline" style="max-width:220px;" onclick="loadTraderMetricsFromTrades()">Load from Trade History</button>
@@ -3122,6 +3138,10 @@
       });
       summaryEl.innerHTML = summaryHtml;
 
+      // Hedge account inputs
+      const hedgeStartBalance = parseFloat(document.getElementById('sim2-hedge-balance').value) || 0;
+      const simRefund = document.getElementById('sim2-refund').value === 'yes';
+
       // Validate inputs
       if (isNaN(winRate) || isNaN(avgRR) || isNaN(riskPct) || winRate <= 0 || avgRR <= 0 || riskPct <= 0) {
         resultsEl.innerHTML = '<p style="color:var(--text-secondary); font-size:0.82rem;">Enter trader metrics and click Run Simulation.</p>';
@@ -3132,6 +3152,27 @@
       const winAmt = riskPct * avgRR; // % gained on win
       const lossAmt = riskPct;         // % lost on loss
       const ev = (winRate * winAmt) - ((1 - winRate) * lossAmt);
+
+      // Pre-compute hedge recover amounts and hedge losses per phase
+      // (mirrors getPhaseRecoverAmt and bankroll sim logic)
+      const phaseRecovers = []; // what hedge wins on fail (deposit amount)
+      const phaseHedgeLosses = []; // what hedge loses on pass
+      let cumHedgeLoss = 0;
+      for (let pi = 0; pi < phases.length; pi++) {
+        const ph = phases[pi];
+        const isFunded = ph.label === 'Funded';
+        const recover = (pi === 0 ? fee : 0) + cumHedgeLoss + (isFunded ? 0 : 0);
+        // For funded, desired net is from sim inputs; for eval phases, 0 in this context
+        // We use the same recover logic: first phase gets fee, rest get cumulative losses
+        const phaseRecover = (pi === 0 ? fee : 0) + cumHedgeLoss;
+        phaseRecovers.push(phaseRecover);
+        // Hedge loss on pass = recover * profitTarget / maxDD (or full recover if equal/unset)
+        const hedgeLoss = (ph.profitTarget > 0 && ph.maxDD > 0)
+          ? phaseRecover * ph.profitTarget / ph.maxDD
+          : phaseRecover;
+        phaseHedgeLosses.push(hedgeLoss);
+        cumHedgeLoss += hedgeLoss;
+      }
 
       // Simulate one phase: returns { passed, days, tradingDays, peakDD }
       function simPhase(phase) {
@@ -3193,10 +3234,19 @@
       let fullPassCount = 0;
       let fullPassTotalDays = [];
       let attemptsInAvailDays = [];
+      // Hedge account tracking
+      const hedgeEndBalances = [];
+      const hedgePnLs = [];
+      let hedgeBustedCount = 0;
 
       for (let run = 0; run < mcRuns; run++) {
         let totalDays = 0;
         let passedAll = true;
+        let hedgeBalance = hedgeStartBalance;
+        let failedPhaseIdx = -1;
+
+        // Pay challenge fee
+        hedgeBalance -= fee;
 
         for (let pi = 0; pi < phases.length; pi++) {
           const result = simPhase(phases[pi]);
@@ -3207,11 +3257,16 @@
             pr.passCount++;
             pr.passDays.push(result.days);
             pr.passTradingDays.push(result.tradingDays);
+            // Hedge loses on prop pass
+            hedgeBalance -= phaseHedgeLosses[pi];
           } else {
             pr.failCount++;
             pr.failDays.push(result.days);
             pr.failTradingDays.push(result.tradingDays);
+            // Hedge wins on prop fail
+            hedgeBalance += phaseRecovers[pi];
             passedAll = false;
+            failedPhaseIdx = pi;
             break; // Stop at first failed phase
           }
         }
@@ -3219,6 +3274,14 @@
         if (passedAll) {
           fullPassCount++;
           fullPassTotalDays.push(totalDays);
+          // Refund fee if applicable
+          if (simRefund) hedgeBalance += fee;
+        }
+
+        if (hedgeBalance <= 0) hedgeBustedCount++;
+        if (hedgeStartBalance > 0) {
+          hedgeEndBalances.push(hedgeBalance);
+          hedgePnLs.push(hedgeBalance - hedgeStartBalance);
         }
 
         // How many full challenge attempts fit in available days
@@ -3271,6 +3334,68 @@
         html += `<div class="challenge-stat-box"><div class="csl">Attempts in ${availDays} Days</div><div class="csv">${medAttempts} median (avg ${avgAttempts.toFixed(1)})</div></div>`;
       }
       html += `</div>`;
+
+      // Hedge account results
+      if (hedgeStartBalance > 0 && hedgeEndBalances.length > 0) {
+        const avgEnd = avg(hedgeEndBalances);
+        const medEnd = percentile(hedgeEndBalances, 50);
+        const avgPnL = avg(hedgePnLs);
+        const medPnL = percentile(hedgePnLs, 50);
+        const minEnd = Math.min(...hedgeEndBalances);
+        const maxEnd = Math.max(...hedgeEndBalances);
+        const bustedPct = (hedgeBustedCount / mcRuns * 100);
+        const profitableRuns = hedgePnLs.filter(p => p > 0).length;
+        const profitablePct = (profitableRuns / mcRuns * 100);
+
+        html += `<div class="card-title" style="font-size:0.82rem; margin-top:1.25rem; margin-bottom:0.5rem;"><span class="dot" style="background:var(--sell-color);"></span> Hedge Account Results <span style="font-size:0.68rem; color:var(--text-secondary); font-weight:400;">(Starting: $${hedgeStartBalance.toLocaleString()})</span></div>`;
+        html += `<div class="challenge-stats">`;
+        html += `<div class="challenge-stat-box"><div class="csl">Avg End Balance</div><div class="csv ${avgEnd >= hedgeStartBalance ? 'buy-text' : 'sell-text'}">$${avgEnd.toFixed(2)}</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Median End Balance</div><div class="csv ${medEnd >= hedgeStartBalance ? 'buy-text' : 'sell-text'}">$${medEnd.toFixed(2)}</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Avg P/L</div><div class="csv ${avgPnL >= 0 ? 'buy-text' : 'sell-text'}">${avgPnL >= 0 ? '+' : '-'}$${Math.abs(avgPnL).toFixed(2)}</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Median P/L</div><div class="csv ${medPnL >= 0 ? 'buy-text' : 'sell-text'}">${medPnL >= 0 ? '+' : '-'}$${Math.abs(medPnL).toFixed(2)}</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Profitable Runs</div><div class="csv ${profitablePct >= 50 ? 'buy-text' : 'sell-text'}">${profitablePct.toFixed(1)}%</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Account Busted</div><div class="csv ${bustedPct > 0 ? 'sell-text' : 'buy-text'}">${bustedPct.toFixed(1)}%</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Best End Balance</div><div class="csv buy-text">$${maxEnd.toFixed(2)}</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Worst End Balance</div><div class="csv ${minEnd >= 0 ? '' : 'sell-text'}">$${minEnd.toFixed(2)}</div></div>`;
+        html += `</div>`;
+
+        // Hedge balance distribution
+        html += `<div style="margin-top:1rem; background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">`;
+        html += `<div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Hedge Account End Balance — Distribution</div>`;
+        html += `<div style="display:grid; grid-template-columns:1fr auto; gap:0.25rem 1rem;">`;
+        html += `<span>Starting Balance</span><span style="text-align:right; font-weight:600;">$${hedgeStartBalance.toFixed(2)}</span>`;
+        [10, 25, 50, 75, 90].forEach(p => {
+          const val = percentile(hedgeEndBalances, p);
+          const pnl = val - hedgeStartBalance;
+          const cls = pnl >= 0 ? 'buy-text' : 'sell-text';
+          html += `<span>${p}th percentile</span><span class="${cls}" style="text-align:right; font-weight:600;">$${val.toFixed(2)} (${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)})</span>`;
+        });
+        html += `</div></div>`;
+
+        // Hedge P/L breakdown by outcome
+        html += `<div style="margin-top:1rem; background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">`;
+        html += `<div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Hedge P/L per Outcome (single attempt)</div>`;
+        html += `<div style="display:grid; grid-template-columns:1fr auto auto; gap:0.25rem 1rem;">`;
+        html += `<span style="font-weight:600; color:var(--text-secondary);">Scenario</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">Hedge P/L</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">End Balance</span>`;
+
+        // Show what happens at each fail point
+        let cumLossShown = 0;
+        for (let pi = 0; pi < phases.length; pi++) {
+          const label = phases[pi].label + ' FAIL';
+          const hedgePnl = -fee + phaseRecovers[pi] - cumLossShown;
+          const endBal = hedgeStartBalance + hedgePnl;
+          const cls = hedgePnl >= 0 ? 'buy-text' : 'sell-text';
+          html += `<span>${label}</span><span class="${cls}" style="text-align:right;">${hedgePnl >= 0 ? '+' : '-'}$${Math.abs(hedgePnl).toFixed(2)}</span><span class="${cls}" style="text-align:right;">$${endBal.toFixed(2)}</span>`;
+          cumLossShown += phaseHedgeLosses[pi];
+        }
+        // All pass scenario
+        const allPassPnl = -fee - cumHedgeLoss + (simRefund ? fee : 0);
+        const allPassEnd = hedgeStartBalance + allPassPnl;
+        const allPassCls = allPassPnl >= 0 ? 'buy-text' : 'sell-text';
+        html += `<span style="border-top:1px solid var(--border); padding-top:0.3rem;">ALL PASS</span><span class="${allPassCls}" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right;">${allPassPnl >= 0 ? '+' : '-'}$${Math.abs(allPassPnl).toFixed(2)}</span><span class="${allPassCls}" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right;">$${allPassEnd.toFixed(2)}</span>`;
+
+        html += `</div></div>`;
+      }
 
       // Per-phase breakdown table
       html += `<div style="margin-top:1rem; overflow-x:auto;">`;
