@@ -1909,6 +1909,9 @@
           </select>
         </div>
       </div>
+
+      <div class="card-title" style="font-size:0.82rem; margin-top:0.5rem; margin-bottom:0.5rem;"><span class="dot" style="background:var(--warning);"></span> Recovery Targets (Desired Net on Fail)</div>
+      <div id="sim2-recover-inputs"></div>
       <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
         <button class="btn btn-primary" style="max-width:220px;" onclick="runChallengeSimulation()">Run Simulation</button>
         <button class="btn btn-outline" style="max-width:220px;" onclick="loadTraderMetricsFromTrades()">Load from Trade History</button>
@@ -3133,14 +3136,50 @@
       const fee = (challenge.phase1 || {}).fee || 0;
       summaryHtml += `<div class="challenge-stat-box"><div class="csl">Steps</div><div class="csv">${steps}</div></div>`;
       summaryHtml += `<div class="challenge-stat-box"><div class="csl">Fee</div><div class="csv">${fee > 0 ? '$' + fee.toFixed(0) : '--'}</div></div>`;
-      phases.forEach(ph => {
-        summaryHtml += `<div class="challenge-stat-box"><div class="csl">${ph.label}</div><div class="csv">${ph.balance > 0 ? '$' + ph.balance.toLocaleString() : '--'} · ${ph.profitTarget > 0 ? ph.profitTarget + '%' : '--'} / ${ph.maxDD > 0 ? ph.maxDD + '%' : '--'}</div></div>`;
+      phases.forEach((ph, i) => {
+        summaryHtml += `<div class="challenge-stat-box"><div class="csl">${ph.label}</div><div class="csv">${ph.balance > 0 ? '$' + ph.balance.toLocaleString() : '--'} · Target ${ph.profitTarget > 0 ? ph.profitTarget + '%' : '--'} / DD ${ph.maxDD > 0 ? ph.maxDD + '%' : '--'}</div></div>`;
       });
       summaryEl.innerHTML = summaryHtml;
 
       // Hedge account inputs
       const hedgeStartBalance = parseFloat(document.getElementById('sim2-hedge-balance').value) || 0;
       const simRefund = document.getElementById('sim2-refund').value === 'yes';
+
+      // Build dynamic recovery target inputs
+      const recoverEl = document.getElementById('sim2-recover-inputs');
+      const builtKey = phases.map(p => p.label).join(',');
+      if (recoverEl.dataset.key !== builtKey) {
+        recoverEl.dataset.key = builtKey;
+        let rhtml = '<div class="form-row-3">';
+        phases.forEach((ph, i) => {
+          rhtml += `<div class="form-group">
+            <label>${ph.label} Net on Fail ($)</label>
+            <input type="number" id="sim2-net-${i}" min="0" step="1" placeholder="0" oninput="runChallengeSimulation()">
+            <span style="font-size:0.68rem; color:var(--text-secondary);">Desired net profit when ${ph.label.toLowerCase()} fails</span>
+          </div>`;
+        });
+        rhtml += '</div>';
+        recoverEl.innerHTML = rhtml;
+
+        // Seed from Strategy tab sim inputs if available
+        for (let i = 1; i <= steps; i++) {
+          const srcEl = document.getElementById('sim-p' + i + '-net-input');
+          const dstEl = document.getElementById('sim2-net-' + (i - 1));
+          if (srcEl && dstEl && srcEl.value) dstEl.value = srcEl.value;
+        }
+        const fundedSrc = document.getElementById('sim-funded-net-input');
+        const fundedIdx = phases.findIndex(p => p.label === 'Funded');
+        if (fundedSrc && fundedIdx >= 0) {
+          const dstEl = document.getElementById('sim2-net-' + fundedIdx);
+          if (dstEl && fundedSrc.value) dstEl.value = fundedSrc.value;
+        }
+      }
+
+      // Read recovery net values
+      const phaseNets = phases.map((_, i) => {
+        const el = document.getElementById('sim2-net-' + i);
+        return el ? parseFloat(el.value) || 0 : 0;
+      });
 
       // Validate inputs
       if (isNaN(winRate) || isNaN(avgRR) || isNaN(riskPct) || winRate <= 0 || avgRR <= 0 || riskPct <= 0) {
@@ -3155,16 +3194,14 @@
 
       // Pre-compute hedge recover amounts and hedge losses per phase
       // (mirrors getPhaseRecoverAmt and bankroll sim logic)
+      // recover = desiredNet + (fee if first phase) + cumulative prior hedge losses
       const phaseRecovers = []; // what hedge wins on fail (deposit amount)
       const phaseHedgeLosses = []; // what hedge loses on pass
       let cumHedgeLoss = 0;
       for (let pi = 0; pi < phases.length; pi++) {
         const ph = phases[pi];
-        const isFunded = ph.label === 'Funded';
-        const recover = (pi === 0 ? fee : 0) + cumHedgeLoss + (isFunded ? 0 : 0);
-        // For funded, desired net is from sim inputs; for eval phases, 0 in this context
-        // We use the same recover logic: first phase gets fee, rest get cumulative losses
-        const phaseRecover = (pi === 0 ? fee : 0) + cumHedgeLoss;
+        const net = phaseNets[pi];
+        const phaseRecover = net + (pi === 0 ? fee : 0) + cumHedgeLoss;
         phaseRecovers.push(phaseRecover);
         // Hedge loss on pass = recover * profitTarget / maxDD (or full recover if equal/unset)
         const hedgeLoss = (ph.profitTarget > 0 && ph.maxDD > 0)
@@ -3375,24 +3412,31 @@
         // Hedge P/L breakdown by outcome
         html += `<div style="margin-top:1rem; background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">`;
         html += `<div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Hedge P/L per Outcome (single attempt)</div>`;
-        html += `<div style="display:grid; grid-template-columns:1fr auto auto; gap:0.25rem 1rem;">`;
-        html += `<span style="font-weight:600; color:var(--text-secondary);">Scenario</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">Hedge P/L</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">End Balance</span>`;
+        html += `<div style="display:grid; grid-template-columns:1fr auto auto auto; gap:0.25rem 1rem;">`;
+        html += `<span style="font-weight:600; color:var(--text-secondary);">Scenario</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">Recover</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">Hedge P/L</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">End Balance</span>`;
 
         // Show what happens at each fail point
         let cumLossShown = 0;
         for (let pi = 0; pi < phases.length; pi++) {
           const label = phases[pi].label + ' FAIL';
+          // P/L = -fee + hedge win (recover) - prior phase hedge losses
           const hedgePnl = -fee + phaseRecovers[pi] - cumLossShown;
           const endBal = hedgeStartBalance + hedgePnl;
           const cls = hedgePnl >= 0 ? 'buy-text' : 'sell-text';
-          html += `<span>${label}</span><span class="${cls}" style="text-align:right;">${hedgePnl >= 0 ? '+' : '-'}$${Math.abs(hedgePnl).toFixed(2)}</span><span class="${cls}" style="text-align:right;">$${endBal.toFixed(2)}</span>`;
+          // Recover breakdown
+          const parts = [];
+          if (pi === 0 && fee > 0) parts.push('Fee $' + fee.toFixed(0));
+          if (cumLossShown > 0) parts.push('Prior $' + cumLossShown.toFixed(0));
+          if (phaseNets[pi] > 0) parts.push('Net $' + phaseNets[pi].toFixed(0));
+          const recoverLabel = '$' + phaseRecovers[pi].toFixed(0) + (parts.length > 0 ? ' (' + parts.join('+') + ')' : '');
+          html += `<span>${label}</span><span style="text-align:right;">${recoverLabel}</span><span class="${cls}" style="text-align:right;">${hedgePnl >= 0 ? '+' : '-'}$${Math.abs(hedgePnl).toFixed(2)}</span><span class="${cls}" style="text-align:right;">$${endBal.toFixed(2)}</span>`;
           cumLossShown += phaseHedgeLosses[pi];
         }
         // All pass scenario
         const allPassPnl = -fee - cumHedgeLoss + (simRefund ? fee : 0);
         const allPassEnd = hedgeStartBalance + allPassPnl;
         const allPassCls = allPassPnl >= 0 ? 'buy-text' : 'sell-text';
-        html += `<span style="border-top:1px solid var(--border); padding-top:0.3rem;">ALL PASS</span><span class="${allPassCls}" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right;">${allPassPnl >= 0 ? '+' : '-'}$${Math.abs(allPassPnl).toFixed(2)}</span><span class="${allPassCls}" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right;">$${allPassEnd.toFixed(2)}</span>`;
+        html += `<span style="border-top:1px solid var(--border); padding-top:0.3rem;">ALL PASS</span><span style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right;">--</span><span class="${allPassCls}" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right;">${allPassPnl >= 0 ? '+' : '-'}$${Math.abs(allPassPnl).toFixed(2)}</span><span class="${allPassCls}" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right;">$${allPassEnd.toFixed(2)}</span>`;
 
         html += `</div></div>`;
       }
