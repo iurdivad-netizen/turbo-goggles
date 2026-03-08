@@ -3814,13 +3814,16 @@
       });
 
       // Funded PASS
+      // Hedge P/L for funded pass = payout - funded hedge loss (net effect on real account)
+      const fundedPassNetHedge = fundedPayout - fundedHedgeLoss;
+      const fundedPassHedgeClass = fundedPassNetHedge >= 0 ? 'buy-text' : 'sell-text';
       const fundedPayoutLabel = fundedPayoutTarget > 0 ? ` (payout target $${fundedPayoutTarget.toFixed(0)})` : '';
       scenarios.push({
         phase: 'Funded', outcome: 'PASS', outcomeClass: 'buy-text',
         deposit: '$' + fundedRecover.toFixed(0),
-        hedgeResult: '-$' + fundedHedgeLoss.toFixed(2), hedgeClass: 'sell-text',
+        hedgeResult: (fundedPassNetHedge >= 0 ? '+' : '-') + '$' + Math.abs(fundedPassNetHedge).toFixed(2), hedgeClass: fundedPassHedgeClass,
         net: (netAllPass >= 0 ? '+' : '') + '$' + netAllPass.toFixed(0),
-        action: `Payout $${fundedPayout.toFixed(0)}${fundedPayoutLabel}. Total net ${netSign}$${Math.abs(netAllPass).toFixed(0)}. Keep funded account!`
+        action: `Payout +$${fundedPayout.toFixed(0)} − hedge loss $${fundedHedgeLoss.toFixed(0)} = ${fundedPassNetHedge >= 0 ? '+' : '-'}$${Math.abs(fundedPassNetHedge).toFixed(0)}${fundedPayoutLabel}. Total net ${netSign}$${Math.abs(netAllPass).toFixed(0)}`
       });
 
       // Render scenario table
