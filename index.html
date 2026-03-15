@@ -1354,6 +1354,28 @@
           <input type="number" id="input-entry" step="0.00001" placeholder="e.g. 1.08450" oninput="updateRiskPreview()">
         </div>
       </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Hedge Margin ($)</label>
+          <input type="number" id="input-hedge-margin" min="0" step="1" placeholder="e.g. 5000" oninput="saveHedgeMargin(); updateRiskPreview()">
+          <span style="font-size:0.68rem; color:var(--text-secondary);">Available margin on hedge account</span>
+        </div>
+        <div class="form-group">
+          <label>Hedge Leverage</label>
+          <select id="input-hedge-leverage" onchange="saveHedgeMargin(); updateRiskPreview()">
+            <option value="30">1:30</option>
+            <option value="50">1:50</option>
+            <option value="100" selected>1:100</option>
+            <option value="200">1:200</option>
+            <option value="500">1:500</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Max Hedge Lots</label>
+          <input type="text" id="input-max-hedge-lots" readonly style="background:var(--bg-secondary); cursor:default;" value="--">
+          <span id="hedge-margin-warning" style="font-size:0.68rem; color:var(--sell-color); display:none;"></span>
+        </div>
+      </div>
       <div class="form-group">
         <label>SL/TP Input Mode</label>
         <div class="direction-toggle">
@@ -1440,6 +1462,10 @@
             <div class="preview-row">
               <span class="preview-row-label">R:R</span>
               <span class="preview-row-value" id="preview-hedge-rr">--</span>
+            </div>
+            <div class="preview-row" style="border-top:1px solid var(--border); margin-top:0.35rem; padding-top:0.35rem;">
+              <span class="preview-row-label">Margin Req.</span>
+              <span class="preview-row-value" id="preview-hedge-margin-req">--</span>
             </div>
           </div>
         </div>
@@ -1978,6 +2004,36 @@
     }
 
     // ── Pip / dollar helpers ──
+    function getContractSize(pair) {
+      if (pair === 'XAU/USD') return 100;        // 100 oz per lot
+      if (pair === 'US30') return 1;              // $1 per point per lot (CFD)
+      if (pair === 'NAS100') return 1;            // $1 per point per lot (CFD)
+      return 100000;                              // standard forex: 100k units per lot
+    }
+
+    function calcRequiredMargin(pair, lots, entry, leverage) {
+      if (!lots || !leverage || lots <= 0 || leverage <= 0) return 0;
+      const contractSize = getContractSize(pair);
+      // Margin = (Lots × Contract Size × Price) / Leverage
+      // For indices/gold, use entry price; for forex, notional value
+      const price = entry || 1;
+      return (lots * contractSize * price) / leverage;
+    }
+
+    function saveHedgeMargin() {
+      const margin = document.getElementById('input-hedge-margin').value;
+      const leverage = document.getElementById('input-hedge-leverage').value;
+      localStorage.setItem('hedgeMargin', margin);
+      localStorage.setItem('hedgeLeverage', leverage);
+    }
+
+    function loadHedgeMargin() {
+      const margin = localStorage.getItem('hedgeMargin');
+      const leverage = localStorage.getItem('hedgeLeverage');
+      if (margin) document.getElementById('input-hedge-margin').value = margin;
+      if (leverage) document.getElementById('input-hedge-leverage').value = leverage;
+    }
+
     function getPipSize(pair) {
       if (pair.includes('JPY')) return 0.01;
       if (pair === 'XAU/USD') return 0.1;
@@ -2277,6 +2333,39 @@
       document.getElementById('preview-hedge-risk').textContent = hedgeRR.risk$ > 0 ? `$${hedgeRR.risk$.toFixed(2)}` : '--';
       document.getElementById('preview-hedge-reward').textContent = hedgeRR.reward$ > 0 ? `$${hedgeRR.reward$.toFixed(2)}` : '--';
       document.getElementById('preview-hedge-rr').textContent = hedgeRR.rr > 0 ? '1:' + hedgeRR.rr.toFixed(2) : '--';
+
+      // Hedge margin requirement
+      const hedgeMarginAvail = parseFloat(document.getElementById('input-hedge-margin').value) || 0;
+      const hedgeLeverage = parseInt(document.getElementById('input-hedge-leverage').value) || 100;
+      const marginReq = calcRequiredMargin(pair, hedgeLots, entry, hedgeLeverage);
+      const marginReqEl = document.getElementById('preview-hedge-margin-req');
+      const marginWarnEl = document.getElementById('hedge-margin-warning');
+      const maxLotsEl = document.getElementById('input-max-hedge-lots');
+
+      if (marginReq > 0) {
+        marginReqEl.textContent = `$${marginReq.toFixed(2)}`;
+        if (hedgeMarginAvail > 0 && marginReq > hedgeMarginAvail) {
+          marginReqEl.style.color = 'var(--sell-color)';
+          marginWarnEl.textContent = 'Margin exceeded! Reduce lots or add funds.';
+          marginWarnEl.style.display = '';
+        } else {
+          marginReqEl.style.color = '';
+          marginWarnEl.style.display = 'none';
+        }
+      } else {
+        marginReqEl.textContent = '--';
+        marginReqEl.style.color = '';
+        marginWarnEl.style.display = 'none';
+      }
+
+      // Max hedge lots from available margin
+      if (hedgeMarginAvail > 0 && entry > 0) {
+        const contractSize = getContractSize(pair);
+        const maxLots = (hedgeMarginAvail * hedgeLeverage) / (contractSize * entry);
+        maxLotsEl.value = maxLots >= 0.01 ? maxLots.toFixed(2) : '0.00';
+      } else {
+        maxLotsEl.value = '--';
+      }
 
       // Update lot size hint
       const hintEl = document.getElementById('hedge-lots-hint');
@@ -2816,7 +2905,9 @@
         challenge: challenge, // backward compat
         simInputs: JSON.parse(localStorage.getItem(getSimStorageKey()) || '{}'),
         settings: {
-          notes: document.getElementById('setting-notes').value || ''
+          notes: document.getElementById('setting-notes').value || '',
+          hedgeMargin: document.getElementById('input-hedge-margin').value || '',
+          hedgeLeverage: document.getElementById('input-hedge-leverage').value || '100'
         }
       };
       const json = JSON.stringify(data, null, 2);
@@ -2975,6 +3066,14 @@
 
           if (data.settings && data.settings.notes) {
             document.getElementById('setting-notes').value = data.settings.notes;
+          }
+          if (data.settings && data.settings.hedgeMargin) {
+            document.getElementById('input-hedge-margin').value = data.settings.hedgeMargin;
+            localStorage.setItem('hedgeMargin', data.settings.hedgeMargin);
+          }
+          if (data.settings && data.settings.hedgeLeverage) {
+            document.getElementById('input-hedge-leverage').value = data.settings.hedgeLeverage;
+            localStorage.setItem('hedgeLeverage', data.settings.hedgeLeverage);
           }
 
           document.getElementById('sim-recover-inputs').dataset.steps = '0';
@@ -4652,6 +4751,7 @@
     updateBankrollSim();
     updateHedgeLotInfo();
     updateSignalChallengeBadge();
+    loadHedgeMargin();
     loadFixSettings();
     loadBridgeUrl();
     renderCopierLog();
