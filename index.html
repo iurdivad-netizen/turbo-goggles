@@ -1151,6 +1151,7 @@
         <div class="form-group" style="margin-bottom: 0; min-width: 120px;">
           <label>Challenge Steps</label>
           <select id="challenge-steps" onchange="setChallengeSteps(parseInt(this.value))">
+            <option value="0">Instant Funded</option>
             <option value="1">1 Step</option>
             <option value="2">2 Step</option>
             <option value="3">3 Step</option>
@@ -2209,9 +2210,9 @@
     function updateSignalChallengeBadge() {
       const badge = document.getElementById('signal-challenge-badge');
       if (!badge) return;
-      const stepsLabel = challengeSteps + '-Step Challenge';
+      const stepsLabel = challengeSteps === 0 ? 'Instant Funded' : challengeSteps + '-Step Challenge';
       const phaseLabel = getPhaseLabel(currentPhase);
-      badge.textContent = stepsLabel + '  ·  ' + phaseLabel;
+      badge.textContent = challengeSteps === 0 ? stepsLabel : stepsLabel + '  ·  ' + phaseLabel;
       badge.style.background = currentPhase === 'funded' ? 'rgba(0,200,120,0.15)' : 'var(--border)';
       badge.style.color = currentPhase === 'funded' ? '#00c878' : 'var(--text-secondary)';
     }
@@ -2612,7 +2613,7 @@
     }
 
     function getPhaseLabel(phase) {
-      if (phase === 'funded') return 'Funded';
+      if (phase === 'funded') return challengeSteps === 0 ? 'Instant Funded' : 'Funded';
       const num = parseInt(phase.replace('phase', ''));
       return challengeSteps === 1 ? 'Evaluation' : 'Phase ' + num;
     }
@@ -2638,9 +2639,10 @@
       // Load the challenge settings for the new step count
       challenge = JSON.parse(localStorage.getItem(getChallengeStorageKey()) || '{}');
 
-      // If current phase doesn't exist in new step count, reset to phase1
+      // If current phase doesn't exist in new step count, reset appropriately
       const phases = getPhaseList();
-      currentPhase = phases.includes(challenge.phase || currentPhase) ? (challenge.phase || 'phase1') : 'phase1';
+      const defaultPhase = steps === 0 ? 'funded' : 'phase1';
+      currentPhase = phases.includes(challenge.phase || currentPhase) ? (challenge.phase || defaultPhase) : defaultPhase;
       challenge.phase = currentPhase;
 
       // Force rebuild sim inputs since step count changed
@@ -2686,23 +2688,24 @@
       const p1 = challenge.phase1 || {};
       const isPhase1 = currentPhase === 'phase1';
       const isFunded = currentPhase === 'funded';
+      const isInstantFunded = challengeSteps === 0;
 
       // Per-phase fields, pre-filled from Phase 1 defaults if phase has no own value
       const val = (field) => p[field] || p1[field] || '';
-      document.getElementById('challenge-balance').value = val('balance');
+      document.getElementById('challenge-balance').value = isInstantFunded ? (p.balance || '') : val('balance');
       document.getElementById('challenge-profit-target').value = p.profitTarget || '';
-      document.getElementById('challenge-daily-loss').value = val('dailyLoss');
-      document.getElementById('challenge-max-dd').value = val('maxDD');
+      document.getElementById('challenge-daily-loss').value = isInstantFunded ? (p.dailyLoss || '') : val('dailyLoss');
+      document.getElementById('challenge-max-dd').value = isInstantFunded ? (p.maxDD || '') : val('maxDD');
       document.getElementById('challenge-min-days').value = p.minDays || '';
       document.getElementById('challenge-time-limit').value = p.timeLimit || '';
-      document.getElementById('challenge-max-lots').value = val('maxLots');
+      document.getElementById('challenge-max-lots').value = isInstantFunded ? (p.maxLots || '') : val('maxLots');
       document.getElementById('challenge-start-date').value = p.startDate || '';
 
-      // Challenge Fee: only on Phase 1 (paid once)
-      document.getElementById('challenge-fee-group').style.display = isPhase1 ? '' : 'none';
-      document.getElementById('challenge-fee').value = p1.fee || '';
+      // Challenge Fee: on Phase 1 (paid once), or on Funded for instant funded (one-time purchase)
+      document.getElementById('challenge-fee-group').style.display = (isPhase1 || isInstantFunded) ? '' : 'none';
+      document.getElementById('challenge-fee').value = isInstantFunded ? ((challenge.funded || {}).fee || '') : (p1.fee || '');
 
-      // Profit Split: only on Funded tab
+      // Profit Split: on Funded tab (always visible for instant funded since it's always funded)
       document.getElementById('challenge-split-group').style.display = isFunded ? '' : 'none';
       document.getElementById('challenge-profit-split').value = (challenge.funded || {}).profitSplit || '';
 
@@ -2728,9 +2731,13 @@
       p.maxLots = parseFloat(document.getElementById('challenge-max-lots').value) || 0;
       p.startDate = document.getElementById('challenge-start-date').value || '';
 
-      // Challenge Fee: only stored on phase1
+      // Challenge Fee: stored on phase1, or on funded for instant funded
       if (currentPhase === 'phase1') {
         p.fee = parseFloat(document.getElementById('challenge-fee').value) || 0;
+      }
+      if (challengeSteps === 0 && currentPhase === 'funded') {
+        if (!challenge.funded) challenge.funded = {};
+        challenge.funded.fee = parseFloat(document.getElementById('challenge-fee').value) || 0;
       }
       // Profit Split: only stored on funded
       if (currentPhase === 'funded') {
@@ -3107,7 +3114,7 @@
 
     // ── Bankroll simulation (dynamic phase model) ──
     function getPhaseRecoverAmt(phase) {
-      const challengeCost = (challenge.phase1 || {}).fee || 0;
+      const challengeCost = challengeSteps === 0 ? ((challenge.funded || {}).fee || 0) : ((challenge.phase1 || {}).fee || 0);
       const p1 = challenge.phase1 || {};
       const steps = getSimPhaseCount();
       const getVal = (id) => { const el = document.getElementById(id); return el ? parseFloat(el.value) || 0 : 0; };
@@ -3130,7 +3137,8 @@
       // Funded phase
       if (phase === 'funded') {
         const net = getVal('sim-funded-net-input');
-        return net + cumLoss;
+        // For instant funded (0-step), include the fee since there are no prior phases
+        return net + cumLoss + (steps === 0 ? challengeCost : 0);
       }
 
       return challengeCost;
@@ -3220,7 +3228,7 @@
       const fundedPayoutPct = fundedBalance > 0 ? (fundedPayoutTarget / fundedBalance) * 100 : 0;
       if (fundedPayoutPct > 0 || (fpp.maxDD || p1.maxDD || 0) > 0) {
         phases.push({
-          label: 'Funded',
+          label: steps === 0 ? 'Instant Funded' : 'Funded',
           balance: fundedBalance,
           profitTarget: fundedPayoutPct,
           maxDD: fpp.maxDD || p1.maxDD || 0,
@@ -3232,11 +3240,11 @@
 
       // Build challenge summary
       let summaryHtml = '';
-      const fee = (challenge.phase1 || {}).fee || 0;
+      const fee = challengeSteps === 0 ? ((challenge.funded || {}).fee || 0) : ((challenge.phase1 || {}).fee || 0);
       const profitSplit = ((challenge.funded || {}).profitSplit || 80) / 100;
       const fundedGoalVal = parseFloat(document.getElementById('sim-funded-goal').value) || 0;
       const fundedPayout = fundedGoalVal * profitSplit;
-      summaryHtml += `<div class="challenge-stat-box"><div class="csl">Steps</div><div class="csv">${steps}</div></div>`;
+      summaryHtml += `<div class="challenge-stat-box"><div class="csl">Type</div><div class="csv">${steps === 0 ? 'Instant Funded' : steps + '-Step'}</div></div>`;
       summaryHtml += `<div class="challenge-stat-box"><div class="csl">Fee</div><div class="csv">${fee > 0 ? '$' + fee.toFixed(0) : '--'}</div></div>`;
       summaryHtml += `<div class="challenge-stat-box"><div class="csl">Funded Payout</div><div class="csv">${fundedPayout > 0 ? '$' + fundedPayout.toFixed(0) + ' (' + (profitSplit * 100).toFixed(0) + '%)' : '--'}</div></div>`;
       phases.forEach((ph, i) => {
@@ -3714,13 +3722,14 @@
       const refund = document.getElementById('sim-refund').value === 'yes';
 
       // Update title and description
-      const stepLabel = steps === 1 ? '1 Step' : steps + ' Step';
+      const stepLabel = steps === 0 ? 'Instant Funded' : (steps === 1 ? '1 Step' : steps + ' Step');
       const phasePath = [];
       for (let i = 1; i <= steps; i++) phasePath.push(steps === 1 ? 'Evaluation' : 'Phase ' + i);
-      phasePath.push('Funded');
+      phasePath.push(steps === 0 ? 'Instant Funded' : 'Funded');
       document.getElementById('sim-title').textContent = stepLabel + ' Over Hedging Simulation';
-      document.getElementById('sim-description').innerHTML =
-        `Hedge recovers <strong>fee (first phase) + prior hedge losses</strong> cumulatively. Prop = Master, Real = Slave (mirrored). Covers ${phasePath.join(' → ')}.`;
+      document.getElementById('sim-description').innerHTML = steps === 0
+        ? `Instant funded account — no evaluation phases. Hedge covers funded trading only.`
+        : `Hedge recovers <strong>fee (first phase) + prior hedge losses</strong> cumulatively. Prop = Master, Real = Slave (mirrored). Covers ${phasePath.join(' → ')}.`;
 
       // Build dynamic inputs - only rebuild DOM when step count changes
       const recoverEl = document.getElementById('sim-recover-inputs');
@@ -3741,7 +3750,7 @@
           <div class="form-group">
             <label>Funded Desired Net on Fail ($)</label>
             <input type="number" id="sim-funded-net-input" min="0" step="1" placeholder="0" oninput="updateBankrollSim()">
-            <span style="font-size:0.68rem; color:var(--text-secondary);">Net profit when funded fails (recover = net + prior losses; fee already included)</span>
+            <span style="font-size:0.68rem; color:var(--text-secondary);">${steps === 0 ? 'Net profit when funded account fails' : 'Net profit when funded fails (recover = net + prior losses; fee already included)'}</span>
           </div>
         </div>`;
         recoverEl.innerHTML = recoverHtml;
@@ -3761,7 +3770,7 @@
       // Get challenge data
       const p1 = challenge.phase1 || {};
       const pFunded = challenge.funded || {};
-      const challengeCost = p1.fee || 0;
+      const challengeCost = challengeSteps === 0 ? (pFunded.fee || 0) : (p1.fee || 0);
       const profitSplit = (pFunded.profitSplit || 80) / 100;
 
       // Calculate recover amounts from desired net
@@ -3792,7 +3801,8 @@
       }
       const fundedNetVal = getInputVal('sim-funded-net-input');
       const fundedNet = fundedNetVal !== '' ? parseFloat(fundedNetVal) || 0 : 0;
-      const fundedRecover = fundedNet + cumulativeLoss;
+      // For instant funded (0-step), include the fee in funded recover since there are no prior phases
+      const fundedRecover = fundedNet + cumulativeLoss + (steps === 0 ? challengeCost : 0);
       // Funded hedge loss on pass: use payout target (profitTarget% or Funded Goal $)
       const fpp = challenge.funded || {};
       const fundedMaxDDPct = fpp.maxDD || p1.maxDD || 0;
@@ -3899,8 +3909,9 @@
         lostSoFar += actualLoss;
       }
 
-      // Funded FAIL - recover parts (fee already in prior losses)
+      // Funded FAIL - recover parts
       const fundedRecoverParts = [];
+      if (steps === 0 && challengeCost > 0) fundedRecoverParts.push('Fee $' + challengeCost.toFixed(0));
       if (lostSoFar > 0) fundedRecoverParts.push('Prior losses $' + lostSoFar.toFixed(0));
       if (fundedNet > 0) fundedRecoverParts.push('Net $' + fundedNet.toFixed(0));
 
