@@ -3385,6 +3385,7 @@
       // Hedge account tracking (single attempt)
       const hedgeEndBalances = [];
       const hedgePnLs = [];
+      const hedgeMaxDrawdowns = [];
       let hedgeBustedCount = 0;
       // Multi-attempt tracking (available days)
       const multiPassCounts = [];
@@ -3392,15 +3393,22 @@
       const multiHedgeEnd = [];
       const multiHedgeMin = [];
       const multiHedgeMax = [];
+      const multiHedgeMaxDD = [];
 
       for (let run = 0; run < mcRuns; run++) {
         let totalDays = 0;
         let passedAll = true;
         let hedgeBalance = hedgeStartBalance;
+        let hedgePeak = hedgeStartBalance;
+        let hedgeMaxDD = 0;
         let failedPhaseIdx = -1;
 
         // Pay challenge fee
         hedgeBalance -= fee;
+        if (hedgeBalance < hedgePeak) {
+          const dd = hedgePeak - hedgeBalance;
+          if (dd > hedgeMaxDD) hedgeMaxDD = dd;
+        }
 
         for (let pi = 0; pi < phases.length; pi++) {
           const result = simPhase(phases[pi]);
@@ -3423,6 +3431,11 @@
             failedPhaseIdx = pi;
             break; // Stop at first failed phase
           }
+
+          // Track hedge drawdown after each phase
+          if (hedgeBalance > hedgePeak) hedgePeak = hedgeBalance;
+          const dd = hedgePeak - hedgeBalance;
+          if (dd > hedgeMaxDD) hedgeMaxDD = dd;
         }
 
         if (passedAll) {
@@ -3434,10 +3447,16 @@
           if (simRefund) hedgeBalance += fee;
         }
 
+        // Final drawdown check after payout
+        if (hedgeBalance > hedgePeak) hedgePeak = hedgeBalance;
+        const finalDD = hedgePeak - hedgeBalance;
+        if (finalDD > hedgeMaxDD) hedgeMaxDD = finalDD;
+
         if (hedgeBalance <= 0) hedgeBustedCount++;
         if (hedgeStartBalance > 0) {
           hedgeEndBalances.push(hedgeBalance);
           hedgePnLs.push(hedgeBalance - hedgeStartBalance);
+          hedgeMaxDrawdowns.push(hedgeMaxDD);
         }
 
         // How many full challenge attempts fit in available days, tracking pass/fail and hedge balance
@@ -3449,6 +3468,8 @@
           let hBal = hedgeStartBalance;
           let hMin = hedgeStartBalance;
           let hMax = hedgeStartBalance;
+          let hPeak = hedgeStartBalance;
+          let hMaxDD = 0;
 
           while (daysLeft > 0) {
             let attemptDays = 0;
@@ -3476,6 +3497,9 @@
 
             if (hBal > hMax) hMax = hBal;
             if (hBal < hMin) hMin = hBal;
+            if (hBal > hPeak) hPeak = hBal;
+            const mdd = hPeak - hBal;
+            if (mdd > hMaxDD) hMaxDD = mdd;
 
             if (attemptDays <= 0) break;
             daysLeft -= attemptDays;
@@ -3493,6 +3517,7 @@
           multiHedgeEnd.push(hBal);
           multiHedgeMin.push(hMin);
           multiHedgeMax.push(hMax);
+          multiHedgeMaxDD.push(hMaxDD);
         }
       }
 
@@ -3564,6 +3589,16 @@
           html += `<div class="challenge-stat-box"><div class="csl">Avg Highest Balance</div><div class="csv buy-text">$${mhAvgMax.toFixed(2)}</div></div>`;
           html += `<div class="challenge-stat-box"><div class="csl">Worst Low (all runs)</div><div class="csv ${mhWorstMin >= 0 ? '' : 'sell-text'}">$${mhWorstMin.toFixed(2)}</div></div>`;
           html += `<div class="challenge-stat-box"><div class="csl">Best High (all runs)</div><div class="csv buy-text">$${mhBestMax.toFixed(2)}</div></div>`;
+
+          const mhAvgDD = avg(multiHedgeMaxDD);
+          const mhMedDD = percentile(multiHedgeMaxDD, 50);
+          const mhWorstDD = Math.max(...multiHedgeMaxDD);
+          const mhAvgDDPct = hedgeStartBalance > 0 ? (mhAvgDD / hedgeStartBalance * 100) : 0;
+          const mhMedDDPct = hedgeStartBalance > 0 ? (mhMedDD / hedgeStartBalance * 100) : 0;
+          const mhWorstDDPct = hedgeStartBalance > 0 ? (mhWorstDD / hedgeStartBalance * 100) : 0;
+          html += `<div class="challenge-stat-box"><div class="csl">Avg Max Drawdown</div><div class="csv sell-text">$${mhAvgDD.toFixed(2)} (${mhAvgDDPct.toFixed(1)}%)</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Median Max Drawdown</div><div class="csv sell-text">$${mhMedDD.toFixed(2)} (${mhMedDDPct.toFixed(1)}%)</div></div>`;
+          html += `<div class="challenge-stat-box"><div class="csl">Worst Max Drawdown</div><div class="csv sell-text">$${mhWorstDD.toFixed(2)} (${mhWorstDDPct.toFixed(1)}%)</div></div>`;
           html += `</div>`;
 
           // Distribution
@@ -3605,6 +3640,16 @@
         html += `<div class="challenge-stat-box"><div class="csl">Account Busted</div><div class="csv ${bustedPct > 0 ? 'sell-text' : 'buy-text'}">${bustedPct.toFixed(1)}%</div></div>`;
         html += `<div class="challenge-stat-box"><div class="csl">Best End Balance</div><div class="csv buy-text">$${maxEnd.toFixed(2)}</div></div>`;
         html += `<div class="challenge-stat-box"><div class="csl">Worst End Balance</div><div class="csv ${minEnd >= 0 ? '' : 'sell-text'}">$${minEnd.toFixed(2)}</div></div>`;
+
+        const avgDD = avg(hedgeMaxDrawdowns);
+        const medDD = percentile(hedgeMaxDrawdowns, 50);
+        const worstDD = Math.max(...hedgeMaxDrawdowns);
+        const avgDDPct = hedgeStartBalance > 0 ? (avgDD / hedgeStartBalance * 100) : 0;
+        const medDDPct = hedgeStartBalance > 0 ? (medDD / hedgeStartBalance * 100) : 0;
+        const worstDDPct = hedgeStartBalance > 0 ? (worstDD / hedgeStartBalance * 100) : 0;
+        html += `<div class="challenge-stat-box"><div class="csl">Avg Max Drawdown</div><div class="csv sell-text">$${avgDD.toFixed(2)} (${avgDDPct.toFixed(1)}%)</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Median Max Drawdown</div><div class="csv sell-text">$${medDD.toFixed(2)} (${medDDPct.toFixed(1)}%)</div></div>`;
+        html += `<div class="challenge-stat-box"><div class="csl">Worst Max Drawdown</div><div class="csv sell-text">$${worstDD.toFixed(2)} (${worstDDPct.toFixed(1)}%)</div></div>`;
         html += `</div>`;
 
         // Hedge balance distribution
