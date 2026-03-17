@@ -3394,6 +3394,10 @@
       const multiHedgeMin = [];
       const multiHedgeMax = [];
       const multiHedgeMaxDD = [];
+      const multiTotalPayouts = [];
+      const multiTotalRecoveries = [];
+      const multiTotalFees = [];
+      const multiTotalHedgeLosses = [];
 
       for (let run = 0; run < mcRuns; run++) {
         let totalDays = 0;
@@ -3470,6 +3474,10 @@
           let hMax = hedgeStartBalance;
           let hPeak = hedgeStartBalance;
           let hMaxDD = 0;
+          let totalPayouts = 0;
+          let totalRecoveries = 0;
+          let totalFeesPaid = 0;
+          let totalHLosses = 0;
 
           while (daysLeft > 0) {
             let attemptDays = 0;
@@ -3477,22 +3485,28 @@
 
             // Pay fee
             hBal -= fee;
+            totalFeesPaid += fee;
             if (hBal < hMin) hMin = hBal;
 
+            let attemptHLoss = 0;
             for (let pi = 0; pi < phases.length; pi++) {
               const result = simPhase(phases[pi]);
               attemptDays += result.days;
               if (result.passed) {
                 hBal -= phaseHedgeLosses[pi];
+                attemptHLoss += phaseHedgeLosses[pi];
               } else {
                 hBal += phaseRecovers[pi];
+                totalRecoveries += phaseRecovers[pi];
                 attemptPassed = false;
                 break;
               }
             }
             if (attemptPassed) {
               hBal += fundedPayout;
-              if (simRefund) hBal += fee;
+              totalPayouts += fundedPayout;
+              totalHLosses += attemptHLoss;
+              if (simRefund) { hBal += fee; totalPayouts += fee; }
             }
 
             if (hBal > hMax) hMax = hBal;
@@ -3518,6 +3532,10 @@
           multiHedgeMin.push(hMin);
           multiHedgeMax.push(hMax);
           multiHedgeMaxDD.push(hMaxDD);
+          multiTotalPayouts.push(totalPayouts);
+          multiTotalRecoveries.push(totalRecoveries);
+          multiTotalFees.push(totalFeesPaid);
+          multiTotalHedgeLosses.push(totalHLosses);
         }
       }
 
@@ -3615,6 +3633,46 @@
           html += `<span>Minimum</span><span style="text-align:right; font-weight:600;">$${Math.min(...multiHedgeEnd).toFixed(2)}</span>`;
           html += `<span>Maximum</span><span style="text-align:right; font-weight:600;">$${Math.max(...multiHedgeEnd).toFixed(2)}</span>`;
           html += `</div></div>`;
+
+          // Accumulated hedge balance breakdown
+          if (multiTotalPayouts.length > 0) {
+            const medPayouts = percentile(multiTotalPayouts, 50);
+            const avgPayouts = avg(multiTotalPayouts);
+            const medRecoveries = percentile(multiTotalRecoveries, 50);
+            const avgRecoveries = avg(multiTotalRecoveries);
+            const medFees = percentile(multiTotalFees, 50);
+            const avgFees = avg(multiTotalFees);
+            const medHLosses = percentile(multiTotalHedgeLosses, 50);
+            const avgHLosses = avg(multiTotalHedgeLosses);
+            const medNetIncome = medPayouts + medRecoveries;
+            const avgNetIncome = avgPayouts + avgRecoveries;
+            const medNetCost = medFees + medHLosses;
+            const avgNetCost = avgFees + avgHLosses;
+
+            html += `<div style="margin-top:1rem; background:var(--bg-secondary); border-radius:0.5rem; padding:0.75rem; font-size:0.82rem;">`;
+            html += `<div style="font-weight:700; margin-bottom:0.5rem; color:var(--text-primary);">Accumulated Hedge Balance Breakdown (${availDays} Days)</div>`;
+            html += `<div style="display:grid; grid-template-columns:1fr auto auto; gap:0.25rem 1rem;">`;
+            html += `<span style="font-weight:600; color:var(--text-secondary);">Component</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">Median</span><span style="font-weight:600; color:var(--text-secondary); text-align:right;">Average</span>`;
+
+            html += `<span>Starting Balance</span><span style="text-align:right; font-weight:600;">$${hedgeStartBalance.toFixed(2)}</span><span style="text-align:right; font-weight:600;">$${hedgeStartBalance.toFixed(2)}</span>`;
+            html += `<span class="buy-text">+ Net Payouts (funded)</span><span class="buy-text" style="text-align:right; font-weight:600;">+$${medPayouts.toFixed(2)}</span><span class="buy-text" style="text-align:right; font-weight:600;">+$${avgPayouts.toFixed(2)}</span>`;
+            html += `<span class="buy-text">+ Failed Recoveries</span><span class="buy-text" style="text-align:right; font-weight:600;">+$${medRecoveries.toFixed(2)}</span><span class="buy-text" style="text-align:right; font-weight:600;">+$${avgRecoveries.toFixed(2)}</span>`;
+            html += `<span class="sell-text">− Challenge Fees</span><span class="sell-text" style="text-align:right; font-weight:600;">-$${medFees.toFixed(2)}</span><span class="sell-text" style="text-align:right; font-weight:600;">-$${avgFees.toFixed(2)}</span>`;
+            html += `<span class="sell-text">− Hedge Losses (passed phases)</span><span class="sell-text" style="text-align:right; font-weight:600;">-$${medHLosses.toFixed(2)}</span><span class="sell-text" style="text-align:right; font-weight:600;">-$${avgHLosses.toFixed(2)}</span>`;
+
+            html += `<span style="border-top:1px solid var(--border); padding-top:0.3rem; font-weight:600;">Total Income (payouts + recoveries)</span><span class="buy-text" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right; font-weight:700;">+$${medNetIncome.toFixed(2)}</span><span class="buy-text" style="border-top:1px solid var(--border); padding-top:0.3rem; text-align:right; font-weight:700;">+$${avgNetIncome.toFixed(2)}</span>`;
+            html += `<span style="font-weight:600;">Total Cost (fees + hedge losses)</span><span class="sell-text" style="text-align:right; font-weight:700;">-$${medNetCost.toFixed(2)}</span><span class="sell-text" style="text-align:right; font-weight:700;">-$${avgNetCost.toFixed(2)}</span>`;
+
+            const medNet = medNetIncome - medNetCost;
+            const avgNet = avgNetIncome - avgNetCost;
+            html += `<span style="border-top:2px solid var(--border); padding-top:0.4rem; font-weight:700;">Net P/L</span><span class="${medNet >= 0 ? 'buy-text' : 'sell-text'}" style="border-top:2px solid var(--border); padding-top:0.4rem; text-align:right; font-weight:700;">${medNet >= 0 ? '+' : '-'}$${Math.abs(medNet).toFixed(2)}</span><span class="${avgNet >= 0 ? 'buy-text' : 'sell-text'}" style="border-top:2px solid var(--border); padding-top:0.4rem; text-align:right; font-weight:700;">${avgNet >= 0 ? '+' : '-'}$${Math.abs(avgNet).toFixed(2)}</span>`;
+
+            const medEndBal = hedgeStartBalance + medNet;
+            const avgEndBal = hedgeStartBalance + avgNet;
+            html += `<span style="font-weight:700;">End Balance</span><span class="${medEndBal >= hedgeStartBalance ? 'buy-text' : 'sell-text'}" style="text-align:right; font-weight:700;">$${medEndBal.toFixed(2)}</span><span class="${avgEndBal >= hedgeStartBalance ? 'buy-text' : 'sell-text'}" style="text-align:right; font-weight:700;">$${avgEndBal.toFixed(2)}</span>`;
+
+            html += `</div></div>`;
+          }
         }
       }
 
